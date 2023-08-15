@@ -24,6 +24,10 @@
    that are ready to run but not actually running. */
 static struct list ready_list;
 
+/* List of sleeping threads. Processes are added to this list
+   when they are sleeping and removed when they are woken up. */
+static struct list sleep_list;
+
 /* List of all processes.  Processes are added to this list
    when they are first scheduled and removed when they exit. */
 static struct list all_list;
@@ -91,6 +95,7 @@ thread_init (void)
 
   lock_init (&tid_lock);
   list_init (&ready_list);
+  list_init (&sleep_list);
   list_init (&all_list);
 
   /* Set up a thread structure for the running thread. */
@@ -312,6 +317,43 @@ thread_yield (void)
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
+}
+
+void 
+thread_sleep(int64_t ticks)
+{
+  struct thread *cur = thread_current();
+
+  ASSERT (!intr_context ());
+  enum intr_level old_level = intr_disable ();
+
+  cur->wakeup_tick = ticks;
+  list_push_back (&sleep_list, &cur->elem);
+
+  intr_set_level (old_level);
+
+  thread_block();
+}
+
+void 
+thread_wakeup(int64_t ticks)
+{
+  struct list_elem *e;
+  struct thread *t;
+
+  ASSERT (intr_get_level () == INTR_OFF);
+
+  for (e = list_begin (&sleep_list); e != list_end (&sleep_list);)
+  {
+    t = list_entry (e, struct thread, elem);
+    if (t->wakeup_tick <= ticks)
+    {
+      e = list_remove (&t->elem);
+      thread_unblock (t);
+    }
+    else
+      e = list_next (e);
+  }
 }
 
 /* Invoke function 'func' on all threads, passing along 'aux'.
