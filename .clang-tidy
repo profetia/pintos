@@ -4,8 +4,11 @@ Checks: >
   misc-*, 
   performance-*,
   readability-*, 
+  -bugprone-reserved-identifier,
+  -misc-const-correctness,
   -readability-braces-around-statements, 
   -readability-identifier-length,
+  -readability-isolate-declaration,
   -readability-magic-numbers, 
   -readability-named-parameter,
   -readability-redundant-declaration,
@@ -18,6 +21,8 @@ CheckOptions:
     value: lower_case
   - key: readability-identifier-naming.VariableCase
     value: lower_case
+  - key: readability-identifier-naming.VariableIgnoredRegexp
+    value: '^_[a-zA-Z0-9]+(_[a-zA-Z0-9]+)*$'
   - key: readability-identifier-naming.EnumConstantCase
     value: UPPER_CASE
   - key: readability-implicit-bool-conversion.AllowIntegerConditions
