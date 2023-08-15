@@ -1,0 +1,7 @@
+{
+    "C_Cpp.default.cStandard": "c99",
+    "clangd.arguments": [
+        "--completion-style=detailed",
+        "--function-arg-placeholders"
+    ],
+}
