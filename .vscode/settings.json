@@ -1,5 +1,5 @@
 {
-    "C_Cpp.default.cStandard": "c99",
+    "C_Cpp.default.cStandard": "gnu99",
     "clangd.arguments": [
         "--completion-style=detailed",
         "--function-arg-placeholders"
