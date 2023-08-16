@@ -116,6 +116,7 @@ sema_up (struct semaphore *sema)
   old_level = intr_disable ();
   if (!list_empty (&sema->waiters)) 
     {
+      // Unblocks the thread with the highest priority
       struct thread *t = list_entry (
           list_max (&sema->waiters, 
                     (list_less_func *) &thread_priority_elem_less, NULL),
@@ -126,7 +127,7 @@ sema_up (struct semaphore *sema)
     }
 
   sema->value++;
-  thread_yield ();
+  thread_yield (); // thread_yield as the current thread may not be the highest priority
   intr_set_level (old_level);
 }
 
@@ -215,6 +216,7 @@ lock_acquire (struct lock *lock)
       cur->waiting_lock = lock;     
       if (lock->holder->priority < cur->priority) 
         {        
+          // Donate priority and forward it to the upstream lock holders
           thread_forward_priority (cur, lock);
         }
     }
@@ -261,6 +263,7 @@ lock_release (struct lock *lock)
   enum intr_level old_level = intr_disable ();
   if (!list_empty (&cur->donor_list)) 
   {
+    // Remove donors by the lock from the donor list
     thread_recall_priority (cur, lock);
   }
   cur->priority = cur->init_priority;
@@ -369,6 +372,7 @@ cond_signal (struct condition *cond, struct lock *lock UNUSED)
   ASSERT (lock_held_by_current_thread (lock));
 
   if (!list_empty (&cond->waiters)) {
+    // Wake up the highest priority waiter
     struct semaphore_elem *sema_elem = list_entry (
         list_max (&cond->waiters, sema_priority_less, NULL), 
         struct semaphore_elem, elem);

@@ -206,6 +206,7 @@ thread_create (const char *name, int priority,
   /* Add to run queue. */
   thread_unblock (t);
 
+  // thread_yield as the new thread may have higher priority
   thread_yield ();
 
   return tid;
@@ -322,6 +323,7 @@ thread_yield (void)
   intr_set_level (old_level);
 }
 
+/* Send the current thread to sleep for ticks, then block it. */
 void 
 thread_sleep(int64_t ticks)
 {
@@ -337,6 +339,8 @@ thread_sleep(int64_t ticks)
   intr_set_level (old_level);
 }
 
+/* Iterates through the sleep_list and unblocks the threads
+   that have slept for ticks or more. */
 void 
 thread_wakeup(int64_t ticks)
 {
@@ -386,11 +390,14 @@ thread_set_priority (int new_priority)
 
   struct thread *cur = thread_current ();
 
+  // Set both the initial and current priority to the new priority
   cur->init_priority = new_priority;
   cur->priority = new_priority;
 
+  // If current thread is donated, then use the highest donation
   thread_pushup_priority (cur);
 
+  // thread_yield as the current thread's priority may no longer be the highest
   thread_yield ();
 }
 
@@ -419,6 +426,7 @@ thread_priority_donor_elem_less (const struct list_elem *a, const struct list_el
   return ta->priority < tb->priority;
 }
 
+/* Update the priority of the CUR with the highest priority of its donors. */
 void 
 thread_pushup_priority (struct thread *cur)
 {
@@ -435,6 +443,7 @@ thread_pushup_priority (struct thread *cur)
     }
 }
 
+/* Forward the priority of the DONOR to the RECIEVER and its upstream locks. */
 void 
 thread_forward_priority (struct thread *donor, struct lock *lock)
 {
@@ -451,6 +460,7 @@ thread_forward_priority (struct thread *donor, struct lock *lock)
     }  
 }
 
+/* Donates the DONOR's priority to the RECIEVER. */
 void
 thread_donate_priority (struct thread *donor, struct thread *reciever)
 {
@@ -458,16 +468,18 @@ thread_donate_priority (struct thread *donor, struct thread *reciever)
   ASSERT (is_thread (reciever));
   ASSERT (donor->priority > reciever->priority);
 
-  struct list_elem *e = list_find (&reciever->donor_list, &donor->donor_elem);
-  if (e != NULL)
+  struct list_elem *e = list_find (&reciever->donor_list, &donor->donor_elem); 
+  if (e != NULL) // If the reciever already has a donation from the donor, remove it
     {
       list_remove (e);
     }                                   
   list_push_back (&reciever->donor_list, &donor->donor_elem);
 
+  // Update the reciever's priority with the highest donation
   thread_pushup_priority (reciever); 
 }
 
+/* Recalls the donation to the current thread's priority, with given lock. */
 void
 thread_recall_priority (struct thread *t, struct lock *lock)
 {
@@ -477,13 +489,14 @@ thread_recall_priority (struct thread *t, struct lock *lock)
   struct list_elem *next;
   for (e = list_begin (&t->donor_list); e != list_end (&t->donor_list);
         e = next)
-  {
-    next = list_next (e);
-    struct thread *t = list_entry (e, struct thread, donor_elem);
-    if (t->waiting_lock == lock) {
-      list_remove (e);
+    {
+      next = list_next (e);
+      struct thread *t = list_entry (e, struct thread, donor_elem);
+      if (t->waiting_lock == lock) 
+        {
+          list_remove (e);
+        }
     }
-  }
 }
 
 /* Sets the current thread's nice value to NICE. */
@@ -638,6 +651,7 @@ next_thread_to_run (void)
   if (list_empty (&ready_list))
     return idle_thread;
   
+  // Pick the thread with the highest priority
   struct list_elem *e = list_max (&ready_list, thread_priority_elem_less, NULL);
   list_remove (e);
   return list_entry (e, struct thread, elem);
