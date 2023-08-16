@@ -75,10 +75,6 @@ static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 
-static bool thread_priority_less (const struct list_elem *a,
-                                  const struct list_elem *b,
-                                  void *aux UNUSED);
-
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
    general and it is possible in this case only because loader.S
@@ -340,11 +336,10 @@ thread_sleep(int64_t ticks)
   enum intr_level old_level = intr_disable ();
 
   cur->wakeup_tick = ticks;
-  list_push_back (&sleep_list, &cur->elem);
-
-  intr_set_level (old_level);
+  list_push_back (&sleep_list, &cur->sleep_elem);
 
   thread_block();
+  intr_set_level (old_level);
 }
 
 void 
@@ -355,16 +350,19 @@ thread_wakeup(int64_t ticks)
 
   ASSERT (intr_get_level () == INTR_OFF);
 
-  for (e = list_begin (&sleep_list); e != list_end (&sleep_list);)
+  if (!list_empty (&sleep_list))
   {
-    t = list_entry (e, struct thread, elem);
-    if (t->wakeup_tick <= ticks)
+    for (e = list_begin (&sleep_list); e != list_end (&sleep_list);)
     {
-      e = list_remove (&t->elem);
-      thread_unblock (t);
+      t = list_entry (e, struct thread, sleep_elem);
+      if (t->wakeup_tick <= ticks)
+      {
+        e = list_remove (&t->sleep_elem);
+        thread_unblock (t);
+      }
+      else
+        e = list_next (e);
     }
-    else
-      e = list_next (e);
   }
 }
 
@@ -397,6 +395,15 @@ int
 thread_get_priority (void) 
 {
   return thread_current ()->priority;
+}
+
+bool
+thread_priority_less (const struct list_elem *a, const struct list_elem *b, 
+                      void *aux UNUSED)
+{
+  struct thread *ta = list_entry (a, struct thread, elem);
+  struct thread *tb = list_entry (b, struct thread, elem);
+  return ta->priority > tb->priority;
 }
 
 /* Sets the current thread's nice value to NICE. */
@@ -631,14 +638,6 @@ allocate_tid (void)
   lock_release (&tid_lock);
 
   return tid;
-}
-
-static bool
-thread_priority_less (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED)
-{
-  struct thread *ta = list_entry (a, struct thread, elem);
-  struct thread *tb = list_entry (b, struct thread, elem);
-  return ta->priority < tb->priority;
 }
 
 /* Offset of `stack' member within `struct thread'.
