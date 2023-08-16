@@ -93,6 +93,11 @@ struct thread
     int64_t wakeup_tick;                /* Wakeup tick. */
     struct list_elem sleep_elem;        /* List element for sleep threads list. */
 
+    int init_priority;                  /* Initial priority. */
+    struct list donor_list;             /* List of donors. */
+    struct list_elem donor_elem;        /* List element for donors list. */
+    struct lock *waiting_lock;          /* Lock that the thread is waiting on. */        
+
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
 
@@ -139,9 +144,17 @@ void thread_foreach (thread_action_func *, void *);
 int thread_get_priority (void);
 void thread_set_priority (int);
 
-bool thread_priority_less (const struct list_elem *a,
+bool thread_priority_elem_less (const struct list_elem *a,
                            const struct list_elem *b,
                            void *aux UNUSED);
+bool thread_priority_donor_elem_less (const struct list_elem *a,
+                           const struct list_elem *b,
+                           void *aux UNUSED);                                                      
+
+void thread_pushup_priority (struct thread *cur);
+void thread_donate_priority (struct thread *donor, struct thread *reciever);                        
+void thread_forward_priority (struct thread *donor, struct lock *lock);
+void thread_recall_priority (struct thread *t, struct lock *lock);
 
 int thread_get_nice (void);
 void thread_set_nice (int);

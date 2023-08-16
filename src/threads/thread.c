@@ -206,6 +206,8 @@ thread_create (const char *name, int priority,
   /* Add to run queue. */
   thread_unblock (t);
 
+  thread_yield ();
+
   return tid;
 }
 
@@ -242,15 +244,10 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-  list_insert_ordered (&ready_list, &t->elem,
-                       (list_less_func *)&thread_priority_less, NULL);
+  list_push_back (&ready_list, &t->elem);  
   t->status = THREAD_READY;
 
   intr_set_level (old_level);
-
-  if (thread_current () != idle_thread
-      && thread_current ()->priority < t->priority)
-    thread_yield ();
 }
 
 /* Returns the name of the running thread. */
@@ -319,8 +316,7 @@ thread_yield (void)
 
   old_level = intr_disable ();
   if (cur != idle_thread) 
-    list_insert_ordered (&ready_list, &cur->elem, 
-                         (list_less_func *) &thread_priority_less, NULL);
+    list_push_back (&ready_list, &cur->elem);    
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -386,7 +382,15 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
-  thread_current ()->priority = new_priority;
+  ASSERT (new_priority >= PRI_MIN && new_priority <= PRI_MAX);  
+
+  struct thread *cur = thread_current ();
+
+  cur->init_priority = new_priority;
+  cur->priority = new_priority;
+
+  thread_pushup_priority (cur);
+
   thread_yield ();
 }
 
@@ -398,12 +402,88 @@ thread_get_priority (void)
 }
 
 bool
-thread_priority_less (const struct list_elem *a, const struct list_elem *b, 
+thread_priority_elem_less (const struct list_elem *a, const struct list_elem *b, 
                       void *aux UNUSED)
 {
   struct thread *ta = list_entry (a, struct thread, elem);
   struct thread *tb = list_entry (b, struct thread, elem);
-  return ta->priority > tb->priority;
+  return ta->priority < tb->priority;
+}
+
+bool
+thread_priority_donor_elem_less (const struct list_elem *a, const struct list_elem *b, 
+                      void *aux UNUSED)
+{
+  struct thread *ta = list_entry (a, struct thread, donor_elem);
+  struct thread *tb = list_entry (b, struct thread, donor_elem);
+  return ta->priority < tb->priority;
+}
+
+void 
+thread_pushup_priority (struct thread *cur)
+{
+  ASSERT (is_thread (cur));
+
+  if (!list_empty (&cur->donor_list))
+    {
+      struct thread *t = list_entry (list_max (&cur->donor_list, 
+                                               (list_less_func *) &thread_priority_donor_elem_less, 
+                                               NULL), 
+                                      struct thread, donor_elem);
+      if (t->priority > cur->priority)
+        cur->priority = t->priority;
+    }
+}
+
+void 
+thread_forward_priority (struct thread *donor, struct lock *lock)
+{
+  struct thread *reciever = lock->holder;     
+  thread_donate_priority (donor, reciever);
+  while (reciever->waiting_lock)
+    {
+      donor = reciever;
+      reciever = reciever->waiting_lock->holder;
+      if (reciever->priority < donor->priority)
+        thread_donate_priority (donor, reciever);
+      else
+        break;
+    }  
+}
+
+void
+thread_donate_priority (struct thread *donor, struct thread *reciever)
+{
+  ASSERT (is_thread (donor));
+  ASSERT (is_thread (reciever));
+  ASSERT (donor->priority > reciever->priority);
+
+  struct list_elem *e = list_find (&reciever->donor_list, &donor->donor_elem);
+  if (e != NULL)
+    {
+      list_remove (e);
+    }                                   
+  list_push_back (&reciever->donor_list, &donor->donor_elem);
+
+  thread_pushup_priority (reciever); 
+}
+
+void
+thread_recall_priority (struct thread *t, struct lock *lock)
+{
+  ASSERT (is_thread (t));
+
+  struct list_elem *e;
+  struct list_elem *next;
+  for (e = list_begin (&t->donor_list); e != list_end (&t->donor_list);
+        e = next)
+  {
+    next = list_next (e);
+    struct thread *t = list_entry (e, struct thread, donor_elem);
+    if (t->waiting_lock == lock) {
+      list_remove (e);
+    }
+  }
 }
 
 /* Sets the current thread's nice value to NICE. */
@@ -523,6 +603,10 @@ init_thread (struct thread *t, const char *name, int priority)
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
+
+  t->init_priority = priority;  
+  list_init (&t->donor_list);
+
   t->magic = THREAD_MAGIC;
 
   old_level = intr_disable ();
@@ -553,8 +637,10 @@ next_thread_to_run (void)
 {
   if (list_empty (&ready_list))
     return idle_thread;
-  else
-    return list_entry (list_pop_front (&ready_list), struct thread, elem);
+  
+  struct list_elem *e = list_max (&ready_list, thread_priority_elem_less, NULL);
+  list_remove (e);
+  return list_entry (e, struct thread, elem);
 }
 
 /* Completes a thread switch by activating the new thread's page

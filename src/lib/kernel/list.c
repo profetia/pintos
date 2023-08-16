@@ -522,3 +522,17 @@ list_min (struct list *list, list_less_func *less, void *aux)
     }
   return min;
 }
+
+/* Returns the element in LIST with the first value equal to ELEM
+   according to EQUAL given auxiliary data AUX, or a null pointer
+   if no such element exists.  If there is more than one match,
+   returns the one that appears earlier in the list. */
+struct list_elem * 
+list_find(struct list *list, struct list_elem *elem)
+{
+  struct list_elem *e;
+  for (e = list_begin (list); e != list_end (list); e = list_next (e))
+    if (e == elem)
+      return e;
+  return NULL;
+}
