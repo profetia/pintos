@@ -75,6 +75,10 @@ static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 
+static bool thread_wakeup_tick_less (const struct list_elem *a,
+                                     const struct list_elem *b,
+                                     void *aux);
+
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
    general and it is possible in this case only because loader.S
@@ -333,7 +337,8 @@ thread_sleep(int64_t ticks)
   enum intr_level old_level = intr_disable ();
 
   cur->wakeup_tick = ticks;
-  list_push_back (&sleep_list, &cur->sleep_elem);
+  list_insert_ordered (&sleep_list, &cur->sleep_elem, 
+                       (list_less_func *) &thread_wakeup_tick_less, NULL);
 
   thread_block();
   intr_set_level (old_level);
@@ -360,7 +365,7 @@ thread_wakeup(int64_t ticks)
         thread_unblock (t);
       }
       else
-        e = list_next (e);
+        break;
     }
   }
 }
@@ -739,6 +744,15 @@ allocate_tid (void)
 
   return tid;
 }
+
+static bool thread_wakeup_tick_less (const struct list_elem *a,
+                                     const struct list_elem *b,
+                                     void *aux UNUSED)
+{
+  struct thread *thread_a = list_entry (a, struct thread, sleep_elem);
+  struct thread *thread_b = list_entry (b, struct thread, sleep_elem);
+  return thread_a->wakeup_tick < thread_b->wakeup_tick;
+}                                     
 
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
