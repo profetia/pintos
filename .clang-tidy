@@ -12,7 +12,6 @@ Checks: >
   -readability-magic-numbers, 
   -readability-named-parameter,
   -readability-redundant-declaration,
-  -readability-function-cognitive-complexity,
 WarningsAsErrors: '*'
 CheckOptions:
   - key: readability-identifier-naming.StructCase
