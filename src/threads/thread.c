@@ -58,6 +58,8 @@ static long long user_ticks;    /* # of timer ticks in user programs. */
 #define TIME_SLICE 4            /* # of timer ticks to give each thread. */
 static unsigned thread_ticks;   /* # of timer ticks since last yield. */
 
+static f32 load_avg;            /* System load average. */
+
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
@@ -78,6 +80,10 @@ static tid_t allocate_tid (void);
 static bool thread_wakeup_tick_less (const struct list_elem *a,
                                      const struct list_elem *b,
                                      void *aux);
+
+static void 
+thread_update_recent_cpu_each (struct thread *t, 
+                                  void *aux UNUSED);
 
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
@@ -107,6 +113,13 @@ thread_init (void)
   init_thread (initial_thread, "main", PRI_DEFAULT);
   initial_thread->status = THREAD_RUNNING;
   initial_thread->tid = allocate_tid ();
+
+  if (thread_mlfqs) // Initialize mlfqs variables.
+    {
+      load_avg = to_f32 (0);
+      initial_thread->nice = 0;
+      initial_thread->recent_cpu = to_f32 (0);
+    }
 }
 
 /* Starts preemptive thread scheduling by enabling interrupts.
@@ -142,6 +155,13 @@ thread_tick (void)
 #endif
   else
     kernel_ticks++;
+
+  // update recent_cpu for current thread
+  if (thread_mlfqs && t != idle_thread) 
+    {
+      t->recent_cpu = add_f32_int (t->recent_cpu, 1);
+      thread_update_priority (t);
+    }
 
   /* Enforce preemption. */
   if (++thread_ticks >= TIME_SLICE)
@@ -506,11 +526,31 @@ thread_recall_priority (struct thread *t, struct lock *lock)
     }
 }
 
+void 
+thread_update_priority (struct thread *t)
+{
+  int priority = PRI_MAX - to_int (
+      div_f32_int (t->recent_cpu, 4)) - t->nice * 2;
+  if (priority < PRI_MIN)
+    priority = PRI_MIN;
+  else if (priority > PRI_MAX)
+    priority = PRI_MAX;
+  t->priority = priority;
+}
+
 /* Sets the current thread's nice value to NICE. */
 void
 thread_set_nice (int nice UNUSED) 
 {
   /* Not yet implemented. */
+  ASSERT (nice >= NICE_MIN && nice <= NICE_MAX);
+
+  struct thread *cur = thread_current ();
+
+  cur->nice = nice;
+  thread_update_priority (cur);
+
+  thread_yield ();
 }
 
 /* Returns the current thread's nice value. */
@@ -518,7 +558,7 @@ int
 thread_get_nice (void) 
 {
   /* Not yet implemented. */
-  return 0;
+  return thread_current ()->nice;
 }
 
 /* Returns 100 times the system load average. */
@@ -526,7 +566,23 @@ int
 thread_get_load_avg (void) 
 {
   /* Not yet implemented. */
-  return 0;
+  return to_int (mul_f32_int (load_avg, 100));
+}
+
+/* Recalculate and update the load_avg. */
+void
+thread_update_load_avg (void)
+{
+  const f32 coef_load_avg = 16110;
+  const f32 coef_ready_threads = 273;
+  
+  size_t ready_threads = list_size (&ready_list);
+  if (thread_current () != idle_thread)
+    ready_threads++;
+
+  load_avg = add_f32 (
+      mul_f32 (coef_load_avg, load_avg), 
+      mul_f32_int (coef_ready_threads, (int)ready_threads));
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
@@ -534,9 +590,16 @@ int
 thread_get_recent_cpu (void) 
 {
   /* Not yet implemented. */
-  return 0;
+  return to_int (mul_f32_int (thread_current ()->recent_cpu, 100));
 }
-
+
+/* Recalculate and update the recent_cpu of all threads. */
+void 
+thread_update_recent_cpu (void)
+{
+  thread_foreach (thread_update_recent_cpu_each, NULL);
+}
+
 /* Idle thread.  Executes when no other thread is ready to run.
 
    The idle thread is initially put on the ready list by
@@ -754,7 +817,20 @@ static bool thread_wakeup_tick_less (const struct list_elem *a,
   struct thread *thread_a = list_entry (a, struct thread, sleep_elem);
   struct thread *thread_b = list_entry (b, struct thread, sleep_elem);
   return thread_a->wakeup_tick < thread_b->wakeup_tick;
-}                                     
+}      
+
+static void
+thread_update_recent_cpu_each (struct thread *t, void *aux UNUSED)
+{
+  t->recent_cpu = add_f32_int (
+      mul_f32(
+          div_f32(mul_f32_int(load_avg, 2), 
+                add_f32_int(mul_f32_int(load_avg, 2), 1)),
+          t->recent_cpu),
+      t->nice);
+
+  thread_update_priority (t);        
+}
 
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */

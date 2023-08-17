@@ -4,6 +4,7 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
+#include "threads/fixed-point.h"
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -23,6 +24,11 @@ typedef int tid_t;
 #define PRI_MIN 0                       /* Lowest priority. */
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
+
+/* Nice values. */
+#define NICE_MIN -20                    /* Lowest nice value. */
+#define NICE_DEFAULT 0                  /* Default nice value. */
+#define NICE_MAX 20                     /* Highest nice value. */
 
 /* A kernel thread or user process.
 
@@ -98,6 +104,9 @@ struct thread
     struct list_elem donor_elem;        /* List element for donors list. */
     struct lock *waiting_lock;          /* Lock that the thread is waiting on. */        
 
+    int nice;                           /* Nice value. */
+    f32 recent_cpu;                     /* Recent CPU. */
+
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
 
@@ -156,9 +165,13 @@ void thread_donate_priority (struct thread *donor, struct thread *reciever);
 void thread_forward_priority (struct thread *donor, struct lock *lock);
 void thread_recall_priority (struct thread *t, struct lock *lock);
 
+void thread_update_priority (struct thread *t);
 int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
+void thread_update_recent_cpu (void);
 int thread_get_load_avg (void);
+void thread_update_load_avg (void);
+
 
 #endif /* threads/thread.h */
