@@ -175,6 +175,36 @@ Because it is simple and efficient. Compared to the other design, it is simpler 
 > `struct' member, global or static variable, `typedef', or
 > enumeration.  Identify the purpose of each in 25 words or less.
 
+```c
+// src/threads/fixed-point.h
+
+...
+
+typedef int f32;
+
+...
+
+// src/threads/thread.h
+
+...
+
+struct thread
+  {
+    ...
+    int nice;                           /* Nice value. */
+    f32 recent_cpu;                     /* Recent CPU. */
+    ...
+  }
+
+...
+
+```
+
+- `f32` : The fixed-point number type, defined as an alias of `int`.
+- In `struct thread`
+    - `nice` : The nice value of the thread.
+    - `recent_cpu` : The recent CPU of the thread.
+
 #### ALGORITHMS 
 
 > C2: Suppose threads A, B, and C have nice values 0, 1, and 2.  Each
@@ -185,23 +215,29 @@ Because it is simple and efficient. Compared to the other design, it is simpler 
 timer  recent_cpu    priority   thread
 ticks   A   B   C   A   B   C   to run
 -----  --  --  --  --  --  --   ------
- 0
- 4
- 8
-12
-16
-20
-24
-28
-32
-36
+ 0      0   0   0   63  61  59   A 
+ 4      4   0   0   62  61  59   A 
+ 8      8   0   0   61  61  59   B 
+12      8   4   0   61  60  59   A 
+16      12  4   0   60  60  59   B 
+20      12  8   0   60  59  59   A 
+24      16  8   0   59  59  59   C 
+28      16  8   4   59  59  58   B 
+32      16  12  4   59  58  58   A 
+36      20  12  4   58  58  58   B 
 
 > C3: Did any ambiguities in the scheduler specification make values
 > in the table uncertain?  If so, what rule did you use to resolve
 > them?  Does this match the behavior of your scheduler?
 
+Yes. The rule is that the thread with the highest priority will be scheduled first. However, if there are multiple threads with the highest priority, the behavior is undefined. 
+
+In the table above, the behavior is to use the first thread with the highest priority in the ready list, assuming that the initial order is A, B, C and the ready list acts in a FIFO manner. This may match the behavior of our scheduler, as it is exactly how `list_max` works.
+
 > C4: How is the way you divided the cost of scheduling between code
 > inside and outside interrupt context likely to affect performance?
+
+The performance may be affected severely since the timer interrupt handler inside interrupt context will iterate all threads to update priority every 4 ticks.
 
 #### RATIONALE 
 
@@ -210,12 +246,16 @@ ticks   A   B   C   A   B   C   to run
 > time to work on this part of the project, how might you choose to
 > refine or improve your design?
 
+Our design is simple and trivia, which is an advantage for us to implement it. However, it is not efficient enough, as it will iterate all threads to update priority.
+
 > C6: The assignment explains arithmetic for fixed-point math in
 > detail, but it leaves it open to you to implement it.  Why did you
 > decide to implement it the way you did?  If you created an
 > abstraction layer for fixed-point math, that is, an abstract data
 > type and/or a set of functions or macros to manipulate fixed-point
 > numbers, why did you do so?  If not, why not?
+
+Our implementation defines fixed-point number type `f32` as an alias of `int`. The reason is that it can help the type system and LSP to better check the type correctness in the code and avoid potential bugs.
 
                SURVEY QUESTIONS
                ================
