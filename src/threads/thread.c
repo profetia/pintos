@@ -393,6 +393,8 @@ thread_set_priority (int new_priority)
 {
   ASSERT (new_priority >= PRI_MIN && new_priority <= PRI_MAX);  
 
+  if (thread_mlfqs) return;
+
   struct thread *cur = thread_current ();
 
   // Set both the initial and current priority to the new priority
