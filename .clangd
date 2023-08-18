@@ -1,0 +1,7 @@
+CompileFlags: # Tweak the parse settings
+  Add: 
+    - "--include-directory=/datassd/workspace/pintos/src"
+    - "--include-directory=/datassd/workspace/pintos/src/devices"
+    - "--include-directory=/datassd/workspace/pintos/src/threads"
+    - "--include-directory=/datassd/workspace/pintos/src/lib"
+    - "--include-directory=/datassd/workspace/pintos/src/lib/kernel"

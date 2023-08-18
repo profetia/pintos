@@ -4,4 +4,5 @@
         "--completion-style=detailed",
         "--function-arg-placeholders"
     ],
+    "git.enableCommitSigning": true,
 }
