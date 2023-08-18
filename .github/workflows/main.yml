@@ -2,7 +2,7 @@ name: \[P1\] threads compile
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main" , "pintos-cicd"]
   pull_request:
     branches: [ "main" ]
 
@@ -13,11 +13,11 @@ jobs:
     - uses: actions/checkout@v3
     - name: make utils
       run: cd src/utils && make clean && make
-      # install qemu    
+      # install qemu
     - name: install qemu
       run: sudo apt-get install qemu
-    - name: add bin to PATH
-      run: echo "PATH=$PATH:$(pwd)/bin" >> $GITHUB_ENV
+    - name: install pintos
+      run: cp bin/pintos/* /usr/local/bin
     # run tests
     - name: test threads
       run: cd src/threads && make check
