@@ -1,0 +1,23 @@
+name: pintos-threads-test
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: make utils
+      run: cd src/utils && make clean && make
+      # install qemu
+    - name: install qemu
+      run: sudo apt-get install qemu-system-i386
+    - name: install pintos
+      run: sudo cp ./bin/* /usr/local/bin/
+      # run tests
+    - name: test threads
+      run: cd src/threads && make && make check 
