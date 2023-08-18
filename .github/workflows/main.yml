@@ -23,6 +23,9 @@ jobs:
     needs: build
     steps:
     - uses: actions/checkout@v3
+    # add the project root folder to PATH
+    - name: add project root to PATH
+      run: echo "PATH=$PATH:$(pwd)/bin" >> $GITHUB_ENV
     # run tests
     - name: run tests
       run: cd src/threads && make check
