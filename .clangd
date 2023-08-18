@@ -5,3 +5,4 @@ CompileFlags: # Tweak the parse settings
     - "--include-directory=/datassd/workspace/pintos/src/threads"
     - "--include-directory=/datassd/workspace/pintos/src/lib"
     - "--include-directory=/datassd/workspace/pintos/src/lib/kernel"
+    - "--include-directory=/datassd/workspace/pintos/src/lib/kernel"
