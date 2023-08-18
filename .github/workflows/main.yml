@@ -1,8 +1,8 @@
-name: \[P1\] threads compile
+name: pintos-threads-test
 
 on:
   push:
-    branches: [ "main" , "pintos-cicd"]
+    branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
 
@@ -18,6 +18,6 @@ jobs:
       run: sudo apt-get install qemu-system-i386
     - name: install pintos
       run: sudo cp ./bin/* /usr/local/bin/
-    # run tests
-    - name: test and threads
-      run: cd src/threads && make && make check
+      # run tests
+    - name: test threads
+      run: cd src/threads && make && make check 
