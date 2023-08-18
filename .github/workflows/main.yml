@@ -15,9 +15,9 @@ jobs:
       run: cd src/utils && make clean && make
       # install qemu
     - name: install qemu
-      run: sudo apt-get install qemu
+      run: sudo apt-get install qemu-system-i386
     - name: install pintos
-      run: sudo cp ./bin/* /usr/local/bin
+      run: sudo cp ./bin/* /usr/local/bin/
     # run tests
-    - name: test threads
-      run: cd src/threads && make check
+    - name: test and threads
+      run: cd src/threads && make && make check
