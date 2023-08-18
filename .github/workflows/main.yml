@@ -7,25 +7,17 @@ on:
     branches: [ "main" ]
 
 jobs:
-  build:
+  test:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
     - name: make utils
       run: cd src/utils && make clean && make
-    - name: make threads
-      run: cd src/threads && make clean && make
       # install qemu    
     - name: install qemu
       run: sudo apt-get install qemu
-  test:
-    runs-on: ubuntu-latest
-    needs: build
-    steps:
-    - uses: actions/checkout@v3
-    # add the project root folder to PATH
-    - name: add project root to PATH
+    - name: add bin to PATH
       run: echo "PATH=$PATH:$(pwd)/bin" >> $GITHUB_ENV
     # run tests
-    - name: run tests
+    - name: test threads
       run: cd src/threads && make check
