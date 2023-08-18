@@ -1,0 +1,13 @@
+- name: PintOS Checker
+  # You may pin to the exact commit or the version.
+  # uses: gbenm/pintos-checker@0931421bbad1c7d848e4fe12b38d5b4c4313eb61
+  uses: gbenm/pintos-checker@v1.0.5
+  with:
+    # Phase to check
+    phase: # default is threads
+    # PintOS code path (relative to the project root)
+    root: # default is .
+    # Command to execute test in phase folder
+    make: make clean && make && make check 
+    # Utils path (relative to root input)
+    utils_path: src/utils # default is utils
