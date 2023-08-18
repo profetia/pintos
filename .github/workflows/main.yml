@@ -17,7 +17,7 @@ jobs:
     - name: install qemu
       run: sudo apt-get install qemu
     - name: install pintos
-      run: sudo cp ./bin/pintos/* /usr/local/bin
+      run: sudo cp ./bin/* /usr/local/bin
     # run tests
     - name: test threads
       run: cd src/threads && make check
