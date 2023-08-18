@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <list.h>
 #include "userprog/gdt.h"
 #include "userprog/pagedir.h"
 #include "userprog/tss.h"
@@ -14,12 +15,22 @@
 #include "threads/flags.h"
 #include "threads/init.h"
 #include "threads/interrupt.h"
+#include "threads/malloc.h"
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 
 static thread_func start_process NO_RETURN;
-static bool load (const char *cmdline, void (**eip) (void), void **esp);
+static bool load (struct list* arg_list, void (**eip) (void), void **esp);
+
+static struct list* parse_args(const char* file_name);
+static void cleanup_args(struct list* arg_list);
+
+struct arg_elem 
+  {
+    char* arg;
+    struct list_elem elem;
+  };
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
@@ -28,29 +39,99 @@ static bool load (const char *cmdline, void (**eip) (void), void **esp);
 tid_t
 process_execute (const char *file_name) 
 {
-  char *fn_copy;
+  struct list* arg_list;
   tid_t tid;
 
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
-  fn_copy = palloc_get_page (0);
-  if (fn_copy == NULL)
-    return TID_ERROR;
-  strlcpy (fn_copy, file_name, PGSIZE);
+  arg_list = parse_args(file_name);
+  if (arg_list == NULL)
+    return TID_ERROR;     
+
+  // Get the program name from the arg_list
+  char* exec_name = list_entry(
+      list_front(arg_list), struct arg_elem, elem)->arg;
 
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
+  tid = thread_create (exec_name, PRI_DEFAULT, start_process, arg_list);
   if (tid == TID_ERROR)
-    palloc_free_page (fn_copy); 
+    cleanup_args(arg_list);
+
   return tid;
+}
+
+/* Parse the arguments into a list of arg_elem structs. If the
+   file_name is "echo x y z", then the list will contain the
+   following elements: "echo", "x", "y", "z". 
+   The caller is responsible for freeing the list. */
+static struct list* 
+parse_args(const char* file_name)
+{
+  char* fn_copy = malloc(strlen(file_name) + 1);
+  if (fn_copy == NULL)
+    return NULL;
+
+  strlcpy(fn_copy, file_name, strlen(file_name) + 1);
+
+  struct list* arg_list = malloc(sizeof(struct list));
+  if (arg_list == NULL)
+    {
+      free(fn_copy);
+      return NULL;
+    }
+
+  list_init(arg_list);
+
+  char* token, *rest;
+  for (token = strtok_r(fn_copy, " ", &rest); token != NULL; token = strtok_r(NULL, " ", &rest))
+    {
+      struct arg_elem* arg = malloc(sizeof(struct arg_elem));
+      if (arg == NULL)
+        {
+          cleanup_args(arg_list);
+          free(fn_copy);
+          return NULL;
+        }
+      memset(arg, 0, sizeof(struct arg_elem));
+
+      arg->arg = malloc(strlen(token) + 1);
+      if (arg->arg == NULL)
+        {
+          free(arg);
+          cleanup_args(arg_list);
+          free(fn_copy);
+          return NULL;
+        }
+      strlcpy(arg->arg, token, strlen(token) + 1);
+      
+      list_push_back(arg_list, &arg->elem);
+    }
+
+  free(fn_copy);
+  return arg_list;
+}
+
+/* Free the memory allocated by parse_args. */
+static void
+cleanup_args(struct list* arg_list)
+{
+  struct list_elem* e;
+  while (!list_empty(arg_list))
+    {
+      e = list_pop_front(arg_list);
+      struct arg_elem* arg = list_entry(e, struct arg_elem, elem);
+      free(arg->arg);
+      free(arg);
+    }
+  free(arg_list);
 }
 
 /* A thread function that loads a user process and starts it
    running. */
 static void
-start_process (void *file_name_)
+start_process (void *arg_list_)
 {
-  char *file_name = file_name_;
+  struct list* arg_list = arg_list_;
   struct intr_frame if_;
   bool success;
 
@@ -59,10 +140,10 @@ start_process (void *file_name_)
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
-  success = load (file_name, &if_.eip, &if_.esp);
+  success = load (arg_list, &if_.eip, &if_.esp);
 
   /* If load failed, quit. */
-  palloc_free_page (file_name);
+  cleanup_args (arg_list);
   if (!success) 
     thread_exit ();
 
@@ -88,6 +169,10 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid UNUSED) 
 {
+  while(true) // TODO: Implement this function
+    {
+      thread_yield();
+    }
   return -1;
 }
 
@@ -197,18 +282,20 @@ struct Elf32_Phdr
 #define PF_W 2          /* Writable. */
 #define PF_R 4          /* Readable. */
 
-static bool setup_stack (void **esp);
+static bool setup_stack (void **esp, struct list* arg_list);
 static bool validate_segment (const struct Elf32_Phdr *, struct file *);
 static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
                           uint32_t read_bytes, uint32_t zero_bytes,
                           bool writable);
+
+static bool setup_args (void **esp, struct list* arg_list);                        
 
 /* Loads an ELF executable from FILE_NAME into the current thread.
    Stores the executable's entry point into *EIP
    and its initial stack pointer into *ESP.
    Returns true if successful, false otherwise. */
 bool
-load (const char *file_name, void (**eip) (void), void **esp) 
+load (struct list* arg_list, void (**eip) (void), void **esp) 
 {
   struct thread *t = thread_current ();
   struct Elf32_Ehdr ehdr;
@@ -223,11 +310,15 @@ load (const char *file_name, void (**eip) (void), void **esp)
     goto done;
   process_activate ();
 
+  // Get the program name from the arg_list
+  char* exec_name = list_entry(
+      list_front(arg_list), struct arg_elem, elem)->arg;
+
   /* Open executable file. */
-  file = filesys_open (file_name);
+  file = filesys_open (exec_name);
   if (file == NULL) 
     {
-      printf ("load: %s: open failed\n", file_name);
+      printf ("load: %s: open failed\n", exec_name);
       goto done; 
     }
 
@@ -240,7 +331,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
       || ehdr.e_phentsize != sizeof (struct Elf32_Phdr)
       || ehdr.e_phnum > 1024) 
     {
-      printf ("load: %s: error loading executable\n", file_name);
+      printf ("load: %s: error loading executable\n", exec_name);
       goto done; 
     }
 
@@ -304,7 +395,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
     }
 
   /* Set up stack. */
-  if (!setup_stack (esp))
+  if (!setup_stack (esp, arg_list))
     goto done;
 
   /* Start address. */
@@ -429,7 +520,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 /* Create a minimal stack by mapping a zeroed page at the top of
    user virtual memory. */
 static bool
-setup_stack (void **esp) 
+setup_stack (void **esp, struct list* arg_list) 
 {
   uint8_t *kpage;
   bool success = false;
@@ -439,11 +530,53 @@ setup_stack (void **esp)
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
       if (success)
-        *esp = PHYS_BASE;
-      else
+        success = setup_args (esp, arg_list); 
+
+      if (!success)
         palloc_free_page (kpage);
     }
   return success;
+}
+
+
+
+static bool 
+setup_args (void **esp, struct list* arg_list) {
+  *esp = PHYS_BASE;
+  for (struct list_elem* e = list_rbegin (arg_list); 
+        e != list_rend (arg_list); e = list_prev (e)) {
+    struct arg_elem* arg = list_entry (e, struct arg_elem, elem);
+    *esp -= strlen (arg->arg) + 1;
+    memcpy (*esp, arg->arg, strlen (arg->arg) + 1);
+    arg->arg = *esp;
+  }
+
+  ptrdiff_t word_align = (ptrdiff_t)*esp % 4;
+  *esp -= word_align;
+  memcpy (*esp, 0, word_align);
+
+  *esp -= sizeof (char*);
+  memcpy (*esp, 0, sizeof (char*));
+
+  for (struct list_elem* e = list_begin (arg_list); 
+        e != list_end (arg_list); e = list_next (e)) {
+    struct arg_elem* arg = list_entry (e, struct arg_elem, elem);
+    *esp -= sizeof (char*);
+    memcpy (*esp, &arg->arg, sizeof (char*));
+  }
+
+  char* argv = *esp;
+  *esp -= sizeof (char**);
+  memcpy (*esp, &argv, sizeof (char**));
+
+  *esp -= sizeof (int);
+  size_t argc = list_size (arg_list);
+  memcpy (*esp, &argc, sizeof (int));
+
+  *esp -= sizeof (void*);
+  memcpy (*esp, 0, sizeof (void*));
+
+  return true;
 }
 
 /* Adds a mapping from user virtual address UPAGE to kernel
