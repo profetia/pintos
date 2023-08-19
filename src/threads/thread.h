@@ -116,6 +116,8 @@ struct thread
 
     int exit_status;                    /* Exit status. */
     struct file *exec_file;             /* Executable file. */
+    struct list file_list;              /* List of files. */
+    int next_fd;                        /* Next file descriptor. */   
 #endif
 
     /* Owned by thread.c. */

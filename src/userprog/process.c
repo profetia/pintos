@@ -74,11 +74,12 @@ process_execute (const char *file_name)
 static struct list* 
 parse_args(const char* file_name)
 {
-  char* fn_copy = malloc(strlen(file_name) + 1);
+  size_t fn_len = strlen(file_name);
+  char* fn_copy = malloc(fn_len + 1);
   if (fn_copy == NULL)
     return NULL;
 
-  strlcpy(fn_copy, file_name, strlen(file_name) + 1);
+  strlcpy(fn_copy, file_name, fn_len + 1);
 
   struct list* arg_list = malloc(sizeof(struct list));
   if (arg_list == NULL)
@@ -101,7 +102,9 @@ parse_args(const char* file_name)
         }
       memset(arg, 0, sizeof(struct arg_elem));
 
-      arg->arg = malloc(strlen(token) + 1);
+      size_t token_len = strlen(token);
+
+      arg->arg = malloc(token_len + 1);
       if (arg->arg == NULL)
         {
           free(arg);
@@ -109,7 +112,7 @@ parse_args(const char* file_name)
           free(fn_copy);
           return NULL;
         }
-      strlcpy(arg->arg, token, strlen(token) + 1);
+      strlcpy(arg->arg, token, token_len + 1);
       
       list_push_back(arg_list, &arg->elem);
     }
@@ -183,6 +186,13 @@ process_wait (tid_t child_tid UNUSED)
   return -1;
 }
 
+struct file_elem
+  {
+    struct file* file;
+    int fd;
+    struct list_elem elem;
+  }; 
+
 /* Free the current process's resources. */
 void
 process_exit (void)
@@ -206,14 +216,26 @@ process_exit (void)
       pagedir_activate (NULL);
       pagedir_destroy (pd);
 
+      printf ("%s: exit(%d)\n", cur->name, cur->exit_status);
+
+      // Close all open files
+      struct list_elem* e;
+      while (!list_empty (&cur->file_list))
+        {
+          e = list_pop_front (&cur->file_list);
+          struct file_elem* file_elem = list_entry (e, struct file_elem, elem);
+          lock_acquire (&fs_lock);
+          file_close (file_elem->file);
+          lock_release (&fs_lock);
+          free (file_elem);
+        }
+
       // Close the executable file
       lock_acquire (&fs_lock);
       file_allow_write (cur->exec_file);
       file_close (cur->exec_file);
       lock_release (&fs_lock);
-      cur->exec_file = NULL;
-
-      printf ("%s: exit(%d)\n", cur->name, cur->exit_status);
+      cur->exec_file = NULL;      
     }
 }
 
@@ -231,8 +253,59 @@ process_activate (void)
   /* Set thread's kernel stack for use in processing
      interrupts. */
   tss_update ();
+} 
+
+int 
+process_add_file (struct file *f)
+{
+  struct thread* cur = thread_current ();
+  struct file_elem* fe = malloc (sizeof (struct file_elem));
+  if (fe == NULL)
+    return -1;
+  fe->file = f;
+  fe->fd = cur->next_fd;
+  cur->next_fd++;
+  list_push_back (&cur->file_list, &fe->elem);
+  return fe->fd;
 }
-
+
+struct file*
+process_get_file (int fd)
+{
+  struct thread* cur = thread_current ();
+  struct list_elem* e;
+  for (e = list_begin (&cur->file_list); e != list_end (&cur->file_list);
+       e = list_next (e))
+    {
+      struct file_elem* fe = list_entry (e, struct file_elem, elem);
+      if (fe->fd == fd)
+        return fe->file;
+    }
+  return NULL;
+}
+
+void
+process_close_file (int fd)
+{
+  struct thread* cur = thread_current ();
+  struct list_elem* e;
+  for (e = list_begin (&cur->file_list); e != list_end (&cur->file_list);
+       e = list_next (e))
+    {
+      struct file_elem* fe = list_entry (e, struct file_elem, elem);
+      if (fe->fd == fd)
+        {
+          lock_acquire (&fs_lock);
+          file_close (fe->file);
+          lock_release (&fs_lock);
+          
+          list_remove (&fe->elem);
+          free (fe);
+          return;
+        }
+    }
+}
+
 /* We load ELF binaries.  The following definitions are taken
    from the ELF specification, [ELF1], more-or-less verbatim.  */
 
@@ -399,7 +472,7 @@ load (struct list* arg_list, void (**eip) (void), void **esp)
                   read_bytes = 0;
                   zero_bytes = ROUND_UP (page_offset + phdr.p_memsz, PGSIZE);
                 }
-              if (!load_segment (file, file_page, (void *) mem_page,
+              if (!load_segment (file, (off_t)file_page, (void *) mem_page,
                                  read_bytes, zero_bytes, writable))
                 goto done;
             }
@@ -419,6 +492,10 @@ load (struct list* arg_list, void (**eip) (void), void **esp)
   // Deny write to the executable file
   file_deny_write(file);
   t->exec_file = file;
+
+  // Initialize the file list and next_fd
+  list_init (&t->file_list);
+  t->next_fd = 2; // 0 and 1 are reserved for stdin and stdout
 
   success = true;
 
@@ -516,7 +593,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
         return false;
 
       /* Load this page. */
-      if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes)
+      if (file_read (file, kpage, (off_t)page_read_bytes) != (int) page_read_bytes)
         {
           palloc_free_page (kpage);
           return false; 
