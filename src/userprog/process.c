@@ -255,6 +255,8 @@ process_activate (void)
   tss_update ();
 } 
 
+static bool process_file_pred (const struct list_elem *e, void *aux);
+
 int 
 process_add_file (struct file *f)
 {
@@ -269,41 +271,39 @@ process_add_file (struct file *f)
   return fe->fd;
 }
 
+static bool 
+process_file_pred (const struct list_elem *e, void *aux)
+{
+  struct file_elem* fe = list_entry (e, struct file_elem, elem);
+  return fe->fd == *(int*)aux;
+}
+
 struct file*
 process_get_file (int fd)
 {
-  struct thread* cur = thread_current ();
-  struct list_elem* e;
-  for (e = list_begin (&cur->file_list); e != list_end (&cur->file_list);
-       e = list_next (e))
-    {
-      struct file_elem* fe = list_entry (e, struct file_elem, elem);
-      if (fe->fd == fd)
-        return fe->file;
-    }
-  return NULL;
+  struct file_elem* fe = list_entry (
+      list_find_if (&thread_current ()->file_list, process_file_pred, &fd),
+      struct file_elem, elem);
+  if (fe == NULL)
+    return NULL;
+  return fe->file;
 }
 
 void
 process_close_file (int fd)
 {
-  struct thread* cur = thread_current ();
-  struct list_elem* e;
-  for (e = list_begin (&cur->file_list); e != list_end (&cur->file_list);
-       e = list_next (e))
-    {
-      struct file_elem* fe = list_entry (e, struct file_elem, elem);
-      if (fe->fd == fd)
-        {
-          lock_acquire (&fs_lock);
-          file_close (fe->file);
-          lock_release (&fs_lock);
-          
-          list_remove (&fe->elem);
-          free (fe);
-          return;
-        }
-    }
+  struct file_elem* fe = list_entry (
+      list_find_if (&thread_current ()->file_list, process_file_pred, &fd),
+      struct file_elem, elem);
+
+  if (fe == NULL)
+    return;
+
+  lock_acquire (&fs_lock);
+  file_close (fe->file);
+  lock_release (&fs_lock);
+  list_remove (&fe->elem);
+  free (fe);
 }
 
 /* We load ELF binaries.  The following definitions are taken

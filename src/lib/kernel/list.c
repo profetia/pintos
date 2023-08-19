@@ -536,3 +536,17 @@ list_find(struct list *list, struct list_elem *elem)
       return e;
   return NULL;
 }
+
+/* Returns the element in LIST with the first value satisfying
+   PRED given auxiliary data AUX, or a null pointer if no such
+   element exists.  If there is more than one match, returns the
+   one that appears earlier in the list. */
+struct list_elem *
+list_find_if (struct list *list, list_pred_func *pred, void *aux)
+{
+  struct list_elem *e;
+  for (e = list_begin (list); e != list_end (list); e = list_next (e))
+    if (pred (e, aux))
+      return e;
+  return NULL;
+}

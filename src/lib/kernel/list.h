@@ -178,7 +178,13 @@ void list_unique (struct list *, struct list *duplicates,
 struct list_elem *list_max (struct list *, list_less_func *, void *aux);
 struct list_elem *list_min (struct list *, list_less_func *, void *aux);
 
+/* Predicate function applied on list elements, with auxiliary data.
+   Returns true if the element satisfies the predicate, false
+   otherwise. */
+typedef bool list_pred_func (const struct list_elem *, void *aux);
+
 /* Linear search. */
 struct list_elem *list_find (struct list *, struct list_elem *);
+struct list_elem *list_find_if (struct list *, list_pred_func *, void *aux);
 
 #endif /* lib/kernel/list.h */
