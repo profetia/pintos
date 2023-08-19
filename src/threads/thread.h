@@ -115,6 +115,7 @@ struct thread
     uint32_t *pagedir;                  /* Page directory. */
 
     int exit_status;                    /* Exit status. */
+    struct file *exec_file;             /* Executable file. */
 #endif
 
     /* Owned by thread.c. */

@@ -26,6 +26,13 @@ static bool load (struct list* arg_list, void (**eip) (void), void **esp);
 static struct list* parse_args(const char* file_name);
 static void cleanup_args(struct list* arg_list);
 
+/* Initializes the process system */
+void
+process_init (void) 
+{
+  lock_init(&fs_lock);
+}
+
 struct arg_elem 
   {
     char* arg;
@@ -199,6 +206,13 @@ process_exit (void)
       pagedir_activate (NULL);
       pagedir_destroy (pd);
 
+      // Close the executable file
+      lock_acquire (&fs_lock);
+      file_allow_write (cur->exec_file);
+      file_close (cur->exec_file);
+      lock_release (&fs_lock);
+      cur->exec_file = NULL;
+
       printf ("%s: exit(%d)\n", cur->name, cur->exit_status);
     }
 }
@@ -315,6 +329,7 @@ load (struct list* arg_list, void (**eip) (void), void **esp)
       list_front(arg_list), struct arg_elem, elem)->arg;
 
   /* Open executable file. */
+  lock_acquire(&fs_lock);
   file = filesys_open (exec_name);
   if (file == NULL) 
     {
@@ -401,11 +416,17 @@ load (struct list* arg_list, void (**eip) (void), void **esp)
   /* Start address. */
   *eip = (void (*) (void)) ehdr.e_entry;
 
+  // Deny write to the executable file
+  file_deny_write(file);
+  t->exec_file = file;
+
   success = true;
 
  done:
   /* We arrive here whether the load is successful or not. */
-  file_close (file);
+  if (!success) 
+    file_close (file);
+  lock_release(&fs_lock);
   return success;
 }
 
