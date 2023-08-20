@@ -24,9 +24,11 @@
    that are ready to run but not actually running. */
 static struct list ready_list;
 
+#if PROJECT == P1
 /* List of sleeping threads. Processes are added to this list
    when they are sleeping and removed when they are woken up. */
 static struct list sleep_list;
+#endif
 
 /* List of all processes.  Processes are added to this list
    when they are first scheduled and removed when they exit. */
@@ -58,7 +60,9 @@ static long long user_ticks;    /* # of timer ticks in user programs. */
 #define TIME_SLICE 4            /* # of timer ticks to give each thread. */
 static unsigned thread_ticks;   /* # of timer ticks since last yield. */
 
+#if PROJECT == P1
 static f32 load_avg;            /* System load average. */
+#endif
 
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
@@ -77,6 +81,7 @@ static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 
+#if PROJECT == P1
 static bool thread_wakeup_tick_less (const struct list_elem *a,
                                      const struct list_elem *b,
                                      void *aux);
@@ -84,6 +89,7 @@ static bool thread_wakeup_tick_less (const struct list_elem *a,
 static void 
 thread_update_recent_cpu_each (struct thread *t, 
                                   void *aux UNUSED);
+#endif
 
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
@@ -105,7 +111,9 @@ thread_init (void)
 
   lock_init (&tid_lock);
   list_init (&ready_list);
+#if PROJECT == P1
   list_init (&sleep_list);
+#endif
   list_init (&all_list);
 
   /* Set up a thread structure for the running thread. */
@@ -114,12 +122,14 @@ thread_init (void)
   initial_thread->status = THREAD_RUNNING;
   initial_thread->tid = allocate_tid ();
 
+#if PROJECT == P1
   if (thread_mlfqs) // Initialize mlfqs variables.
     {
       load_avg = to_f32 (0);
       initial_thread->nice = 0;
       initial_thread->recent_cpu = to_f32 (0);
     }
+#endif
 }
 
 /* Starts preemptive thread scheduling by enabling interrupts.
@@ -156,12 +166,14 @@ thread_tick (void)
   else
     kernel_ticks++;
 
+#if PROJECT == P1
   // update recent_cpu for current thread
   if (thread_mlfqs && t != idle_thread) 
     {
       t->recent_cpu = add_f32_int (t->recent_cpu, 1);
       thread_update_priority (t);
     }
+#endif
 
   /* Enforce preemption. */
   if (++thread_ticks >= TIME_SLICE)
@@ -230,8 +242,10 @@ thread_create (const char *name, int priority,
   /* Add to run queue. */
   thread_unblock (t);
 
+#if PROJECT == P1
   // thread_yield as the new thread may have higher priority
   thread_yield ();
+#endif
 
   return tid;
 }
@@ -271,7 +285,6 @@ thread_unblock (struct thread *t)
   ASSERT (t->status == THREAD_BLOCKED);
   list_push_back (&ready_list, &t->elem);  
   t->status = THREAD_READY;
-
   intr_set_level (old_level);
 }
 
@@ -347,6 +360,7 @@ thread_yield (void)
   intr_set_level (old_level);
 }
 
+#if PROJECT == P1
 /* Send the current thread to sleep for ticks, then block it. */
 void 
 thread_sleep(int64_t ticks)
@@ -389,6 +403,7 @@ thread_wakeup(int64_t ticks)
     }
   }
 }
+#endif
 
 /* Invoke function 'func' on all threads, passing along 'aux'.
    This function must be called with interrupts off. */
@@ -411,6 +426,7 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
+#if PROJECT == P1
   ASSERT (new_priority >= PRI_MIN && new_priority <= PRI_MAX);  
 
   if (thread_mlfqs) return;
@@ -426,6 +442,9 @@ thread_set_priority (int new_priority)
 
   // thread_yield as the current thread's priority may no longer be the highest
   thread_yield ();
+#else
+  thread_current ()->priority = new_priority;
+#endif
 }
 
 /* Returns the current thread's priority. */
@@ -435,6 +454,7 @@ thread_get_priority (void)
   return thread_current ()->priority;
 }
 
+#if PROJECT == P1
 bool
 thread_priority_elem_less (const struct list_elem *a, const struct list_elem *b, 
                       void *aux UNUSED)
@@ -538,35 +558,11 @@ thread_update_priority (struct thread *t)
   t->priority = priority;
 }
 
-/* Sets the current thread's nice value to NICE. */
-void
-thread_set_nice (int nice UNUSED) 
+/* Recalculate and update the recent_cpu of all threads. */
+void 
+thread_update_recent_cpu (void)
 {
-  /* Not yet implemented. */
-  ASSERT (nice >= NICE_MIN && nice <= NICE_MAX);
-
-  struct thread *cur = thread_current ();
-
-  cur->nice = nice;
-  thread_update_priority (cur);
-
-  thread_yield ();
-}
-
-/* Returns the current thread's nice value. */
-int
-thread_get_nice (void) 
-{
-  /* Not yet implemented. */
-  return thread_current ()->nice;
-}
-
-/* Returns 100 times the system load average. */
-int
-thread_get_load_avg (void) 
-{
-  /* Not yet implemented. */
-  return to_int (mul_f32_int (load_avg, 100));
+  thread_foreach (thread_update_recent_cpu_each, NULL);
 }
 
 /* Recalculate and update the load_avg. */
@@ -585,20 +581,62 @@ thread_update_load_avg (void)
       mul_f32_int (coef_ready_threads, (int)ready_threads));
 }
 
+#endif
+
+/* Sets the current thread's nice value to NICE. */
+void
+thread_set_nice (int nice UNUSED) 
+{
+  /* Not yet implemented. */
+#if PROJECT == P1
+  ASSERT (nice >= NICE_MIN && nice <= NICE_MAX);
+
+  struct thread *cur = thread_current ();
+
+  cur->nice = nice;
+  thread_update_priority (cur);
+
+  thread_yield ();
+#endif
+}
+
+/* Returns the current thread's nice value. */
+int
+thread_get_nice (void) 
+{
+  /* Not yet implemented. */
+#if PROJECT == P1
+  return thread_current ()->nice;
+#else
+  return 0;
+#endif
+}
+
+/* Returns 100 times the system load average. */
+int
+thread_get_load_avg (void) 
+{
+  /* Not yet implemented. */
+#if PROJECT == P1
+  return to_int (mul_f32_int (load_avg, 100));
+#else
+  return 0;
+#endif
+}
+
 /* Returns 100 times the current thread's recent_cpu value. */
 int
 thread_get_recent_cpu (void) 
 {
   /* Not yet implemented. */
+#if PROJECT == P1
   return to_int (mul_f32_int (thread_current ()->recent_cpu, 100));
+#else
+  return 0;
+#endif
 }
 
-/* Recalculate and update the recent_cpu of all threads. */
-void 
-thread_update_recent_cpu (void)
-{
-  thread_foreach (thread_update_recent_cpu_each, NULL);
-}
+
 
 /* Idle thread.  Executes when no other thread is ready to run.
 
@@ -687,8 +725,10 @@ init_thread (struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
 
+#if PROJECT == P1
   t->init_priority = priority;  
   list_init (&t->donor_list);
+#endif
 
   t->magic = THREAD_MAGIC;
 
@@ -720,11 +760,14 @@ next_thread_to_run (void)
 {
   if (list_empty (&ready_list))
     return idle_thread;
-  
+#if PROJECT == P1
   // Pick the thread with the highest priority
   struct list_elem *e = list_max (&ready_list, thread_priority_elem_less, NULL);
   list_remove (e);
   return list_entry (e, struct thread, elem);
+#else
+  return list_entry (list_pop_front (&ready_list), struct thread, elem);
+#endif
 }
 
 /* Completes a thread switch by activating the new thread's page
@@ -810,6 +853,7 @@ allocate_tid (void)
   return tid;
 }
 
+#if PROJECT == P1
 static bool thread_wakeup_tick_less (const struct list_elem *a,
                                      const struct list_elem *b,
                                      void *aux UNUSED)
@@ -831,6 +875,7 @@ thread_update_recent_cpu_each (struct thread *t, void *aux UNUSED)
 
   thread_update_priority (t);        
 }
+#endif
 
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */

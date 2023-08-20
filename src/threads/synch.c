@@ -68,8 +68,7 @@ sema_down (struct semaphore *sema)
   old_level = intr_disable ();
   while (sema->value == 0) 
     {
-      list_push_back (&sema->waiters, &thread_current ()->elem);
-      
+      list_push_back (&sema->waiters, &thread_current ()->elem);      
       thread_block ();
     }
   sema->value--;
@@ -115,6 +114,7 @@ sema_up (struct semaphore *sema)
 
   old_level = intr_disable ();
   if (!list_empty (&sema->waiters)) 
+#if PROJECT == P1
     {
       // Unblocks the thread with the highest priority
       struct thread *t = list_entry (
@@ -125,9 +125,16 @@ sema_up (struct semaphore *sema)
       list_remove (&t->elem);
       thread_unblock (t);
     }
+#else
+    thread_unblock (list_entry (list_pop_front (&sema->waiters),
+                                struct thread, elem));
+#endif
 
   sema->value++;
-  thread_yield (); // thread_yield as the current thread may not be the highest priority
+#if PROJECT == P1
+  thread_yield (); 
+  // thread_yield as the current thread may not be the highest priority
+#endif
   intr_set_level (old_level);
 }
 
@@ -207,6 +214,7 @@ lock_acquire (struct lock *lock)
   ASSERT (!intr_context ());
   ASSERT (!lock_held_by_current_thread (lock));
 
+#if PROJECT == P1
   if (thread_mlfqs) 
     {
       sema_down (&lock->semaphore);
@@ -227,11 +235,14 @@ lock_acquire (struct lock *lock)
           thread_forward_priority (cur, lock);
         }
     }
+#endif    
 
   sema_down (&lock->semaphore);
   lock->holder = thread_current ();
 
+#if PROJECT == P1
   intr_set_level (old_level);
+#endif
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -265,6 +276,7 @@ lock_release (struct lock *lock)
   ASSERT (lock != NULL);
   ASSERT (lock_held_by_current_thread (lock));
 
+#if PROJECT == P1
   if (thread_mlfqs)
     {
       lock->holder = NULL;
@@ -282,11 +294,15 @@ lock_release (struct lock *lock)
   }
   cur->priority = cur->init_priority;
   thread_pushup_priority (cur);
+#endif
 
   lock->holder = NULL;
   sema_up (&lock->semaphore);
+
+#if PROJECT == P1
   intr_set_level (old_level);
   thread_yield ();
+#endif
 }
 
 /* Returns true if the current thread holds LOCK, false
@@ -307,6 +323,7 @@ struct semaphore_elem
     struct semaphore semaphore;         /* This semaphore. */
   };
 
+#if PROJECT == P1
 static bool sema_priority_less (const struct list_elem *a,
                                 const struct list_elem *b,
                                 void *aux UNUSED)
@@ -320,7 +337,8 @@ static bool sema_priority_less (const struct list_elem *a,
       list_max (&sb->semaphore.waiters, thread_priority_elem_less, NULL),
       struct thread, elem);
   return ta->priority < tb->priority;
-}                                
+}
+#endif                       
 
 /* Initializes condition variable COND.  A condition variable
    allows one piece of code to signal a condition and cooperating
@@ -385,7 +403,9 @@ cond_signal (struct condition *cond, struct lock *lock UNUSED)
   ASSERT (!intr_context ());
   ASSERT (lock_held_by_current_thread (lock));
 
-  if (!list_empty (&cond->waiters)) {
+  if (!list_empty (&cond->waiters)) 
+#if PROJECT == P1  
+  {
     // Wake up the highest priority waiter
     struct semaphore_elem *sema_elem = list_entry (
         list_max (&cond->waiters, sema_priority_less, NULL), 
@@ -394,6 +414,10 @@ cond_signal (struct condition *cond, struct lock *lock UNUSED)
     list_remove (&sema_elem->elem);
     sema_up (&sema_elem->semaphore);
   }
+#else
+    sema_up (&list_entry (list_pop_front (&cond->waiters),
+                          struct semaphore_elem, elem)->semaphore);
+#endif
 }
 
 /* Wakes up all threads, if any, waiting on COND (protected by

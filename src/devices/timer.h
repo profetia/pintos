@@ -1,6 +1,7 @@
 #ifndef DEVICES_TIMER_H
 #define DEVICES_TIMER_H
 
+#include <config.h>
 #include <round.h>
 #include <stdint.h>
 

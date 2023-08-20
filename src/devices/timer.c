@@ -93,8 +93,14 @@ timer_sleep (int64_t ticks)
 
   ASSERT (intr_get_level () == INTR_ON);
 
+#if PROJECT == P1
   // sleep until wakeup by timer_interrupt
   thread_sleep(start + ticks);
+#else
+  // busy waiting
+  while (timer_elapsed (start) < ticks) 
+    thread_yield ();
+#endif
 }
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be
@@ -171,24 +177,29 @@ timer_print_stats (void)
 static void
 timer_interrupt (struct intr_frame *args UNUSED)
 {
+#if PROJECT == P1
   ASSERT (intr_get_level () == INTR_OFF);
+#endif
 
   ticks++;
   thread_tick ();
 
+#if PROJECT == P1
   // wakeup sleeping threads
   thread_wakeup(ticks);
 
   // update recent_cpu
-  if (thread_mlfqs) {    
-    if (ticks % TIMER_FREQ == 0) {
-      thread_update_load_avg ();
-      thread_update_recent_cpu ();
+  if (thread_mlfqs) 
+    {    
+      if (ticks % TIMER_FREQ == 0) 
+        {
+          thread_update_load_avg ();
+          thread_update_recent_cpu ();
+        }
+      if (ticks % 4 == 0)
+        thread_update_priority (thread_current ());
     }
-    if (ticks % 4 == 0) {
-      thread_update_priority (thread_current ());
-    }
-  }
+#endif
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer

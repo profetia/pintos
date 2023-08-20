@@ -1,10 +1,16 @@
 #ifndef THREADS_THREAD_H
 #define THREADS_THREAD_H
 
+#include <config.h>
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
+
+#if PROJECT == P1
 #include "threads/fixed-point.h"
+#endif
+
+#include "threads/synch.h"
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -25,10 +31,12 @@ typedef int tid_t;
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
 
+#if PROJECT == P1
 /* Nice values. */
 #define NICE_MIN -20                    /* Lowest nice value. */
 #define NICE_DEFAULT 0                  /* Default nice value. */
 #define NICE_MAX 20                     /* Highest nice value. */
+#endif
 
 /* A kernel thread or user process.
 
@@ -96,6 +104,7 @@ struct thread
     int priority;                       /* Priority. */
     struct list_elem allelem;           /* List element for all threads list. */
 
+#if PROJECT == P1
     int64_t wakeup_tick;                /* Wakeup tick. */
     struct list_elem sleep_elem;        /* List element for sleep threads list. */
 
@@ -106,6 +115,7 @@ struct thread
 
     int nice;                           /* Nice value. */
     f32 recent_cpu;                     /* Recent CPU. */
+#endif
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
@@ -158,6 +168,7 @@ void thread_foreach (thread_action_func *, void *);
 int thread_get_priority (void);
 void thread_set_priority (int);
 
+#if PROJECT == P1
 bool thread_priority_elem_less (const struct list_elem *a,
                            const struct list_elem *b,
                            void *aux UNUSED);
@@ -171,12 +182,13 @@ void thread_forward_priority (struct thread *donor, struct lock *lock);
 void thread_recall_priority (struct thread *t, struct lock *lock);
 
 void thread_update_priority (struct thread *t);
+void thread_update_recent_cpu (void);
+void thread_update_load_avg (void);
+#endif
+
 int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
-void thread_update_recent_cpu (void);
 int thread_get_load_avg (void);
-void thread_update_load_avg (void);
-
 
 #endif /* threads/thread.h */
