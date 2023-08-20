@@ -127,7 +127,12 @@ struct thread
     int exit_status;                    /* Exit status. */
     struct file *exec_file;             /* Executable file. */
     struct list file_list;              /* List of files. */
-    int next_fd;                        /* Next file descriptor. */   
+    int next_fd;                        /* Next file descriptor. */
+
+    struct list child_list;             /* List of children. */    
+    struct lock child_lock;             /* Child lock. */
+    struct thread *parent;              /* Parent thread. */
+    struct lock parent_lock;            /* Parent lock. */   
 #endif
 
     /* Owned by thread.c. */

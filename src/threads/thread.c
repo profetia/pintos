@@ -732,6 +732,22 @@ init_thread (struct thread *t, const char *name, int priority)
 
   t->magic = THREAD_MAGIC;
 
+#ifdef USERPROG
+  t->exit_status = -1;   
+  t->exec_file = NULL;
+
+  // Initialize the file list and next_fd
+  list_init (&t->file_list);
+  t->next_fd = 2; // 0 and 1 are reserved for stdin and stdout
+
+  // Initialize the child list
+  list_init (&t->child_list);
+  lock_init (&t->child_lock); 
+
+  t->parent = NULL;
+  lock_init (&t->parent_lock);
+#endif
+
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
   intr_set_level (old_level);

@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <tanc.h>
 #include <list.h>
 #include "userprog/gdt.h"
 #include "userprog/pagedir.h"
@@ -36,7 +37,24 @@ process_init (void)
 struct arg_elem 
   {
     char* arg;
+    char* addr;
     struct list_elem elem;
+  };
+
+struct child_elem 
+  {
+    struct thread* child;
+    int exit_status;
+    struct semaphore sema;
+    tid_t pid;
+    struct list_elem elem;    
+  };
+
+struct start_process_args
+  {
+    struct list* arg_list;
+    struct thread* parent;
+    struct child_elem* child;
   };
 
 /* Starts a new thread running a user program loaded from
@@ -59,10 +77,56 @@ process_execute (const char *file_name)
   char* exec_name = list_entry(
       list_front(arg_list), struct arg_elem, elem)->arg;
 
+  struct thread* cur = thread_current();
+
+  struct start_process_args* init_args = malloc(sizeof(struct start_process_args));
+  if (init_args == NULL)
+    {
+      cleanup_args(arg_list);
+      return TID_ERROR;
+    }
+  init_args->arg_list = arg_list;
+  init_args->parent = cur;
+
+  struct child_elem* child = malloc(sizeof(struct child_elem));
+  if (child == NULL)
+    {
+      cleanup_args(arg_list);
+      free(init_args);
+      return TID_ERROR;
+    }
+  init_args->child = child;
+
+  sema_init(&child->sema, 0);
+  child->pid = TID_ERROR;
+  child->exit_status = -1;
+  child->child = NULL;
+
+  lock_acquire (&cur->child_lock);
+  list_push_back(&cur->child_list, &child->elem);
+  lock_release (&cur->child_lock);  
+
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (exec_name, PRI_DEFAULT, start_process, arg_list);
+  tid = thread_create (exec_name, PRI_DEFAULT, start_process, init_args);
   if (tid == TID_ERROR)
-    cleanup_args(arg_list);
+    {
+      cleanup_args(arg_list);
+      free(child);
+      free(init_args);
+      return TID_ERROR;
+    }
+    
+  sema_down(&child->sema);
+  if (child->pid == TID_ERROR)
+    {
+      cleanup_args(arg_list);
+      lock_acquire (&cur->child_lock);
+      list_remove(&child->elem);
+      lock_release (&cur->child_lock);
+      free(child);
+      free(init_args);
+      return TID_ERROR;
+    }
 
   return tid;
 }
@@ -139,9 +203,10 @@ cleanup_args(struct list* arg_list)
 /* A thread function that loads a user process and starts it
    running. */
 static void
-start_process (void *arg_list_)
+start_process (void *init_args_)
 {
-  struct list* arg_list = arg_list_;
+  struct start_process_args* init_args = init_args_;
+  struct list* arg_list = init_args->arg_list;
   struct intr_frame if_;
   bool success;
 
@@ -155,7 +220,22 @@ start_process (void *arg_list_)
   /* If load failed, quit. */
   cleanup_args (arg_list);
   if (!success) 
-    thread_exit ();
+    {    
+      sema_up(&init_args->child->sema);    
+      thread_exit ();  
+    }
+  else
+    {
+      struct thread* cur = thread_current();
+      cur->parent = init_args->parent;
+
+      struct child_elem* child = init_args->child;
+      child->pid = cur->tid;
+      child->child = cur;
+      
+      free(init_args);
+      sema_up(&child->sema);
+    }
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
@@ -165,6 +245,16 @@ start_process (void *arg_list_)
      and jump to it. */
   asm volatile ("movl %0, %%esp; jmp intr_exit" : : "g" (&if_) : "memory");
   NOT_REACHED ();
+}
+
+static bool process_child_pred (const struct list_elem*, void* aux);
+static bool process_pid_pred (const struct list_elem*, void* aux);
+
+static bool
+process_pid_pred (const struct list_elem* e, void* aux)
+{
+  struct child_elem* child = list_entry(e, struct child_elem, elem);
+  return child->pid == *(tid_t*)aux;
 }
 
 /* Waits for thread TID to die and returns its exit status.  If
@@ -177,13 +267,29 @@ start_process (void *arg_list_)
    This function will be implemented in problem 2-2.  For now, it
    does nothing. */
 int
-process_wait (tid_t child_tid UNUSED) 
+process_wait (tid_t child_tid) 
 {
-  while(true) // TODO: Implement this function
-    {
-      thread_yield();
-    }
-  return -1;
+  struct thread* cur = thread_current();
+
+  lock_acquire(&cur->child_lock);
+  struct child_elem* child = list_entry(
+      list_find_if(&cur->child_list, process_pid_pred, &child_tid), 
+      struct child_elem, elem);
+  lock_release(&cur->child_lock);
+
+  if (child == NULL)
+    return -1;
+
+  ASSERT (child->pid != TID_ERROR);
+  if (child->child != NULL)
+    sema_down(&child->sema);    
+  
+  int exit_status = child->exit_status;
+  lock_acquire(&cur->child_lock);
+  list_remove(&child->elem);
+  lock_release(&cur->child_lock);
+  free(child);
+  return exit_status;
 }
 
 struct file_elem
@@ -193,12 +299,54 @@ struct file_elem
     struct list_elem elem;
   }; 
 
+static bool 
+process_child_pred (const struct list_elem* e, void* aux)
+{
+  struct child_elem* child = list_entry (e, struct child_elem, elem);
+  return child->child == (struct thread*)aux;
+}
+
 /* Free the current process's resources. */
 void
 process_exit (void)
 {
   struct thread *cur = thread_current ();
   uint32_t *pd;
+
+  lock_acquire (&cur->parent_lock);
+  if (cur->parent != NULL)
+    {
+      lock_acquire (&cur->parent->child_lock);
+      struct child_elem* front = list_entry (
+          list_front (&cur->parent->child_list), struct child_elem, elem);
+
+      struct child_elem* child = list_entry(
+          list_find_if (&cur->parent->child_list, process_child_pred, cur), 
+          struct child_elem, elem);
+      lock_release (&cur->parent->child_lock);
+
+      ASSERT (child != NULL);
+      child->exit_status = cur->exit_status;
+      child->child = NULL;
+      sema_up (&child->sema);
+    }
+  lock_release (&cur->parent_lock);
+  
+  lock_acquire (&cur->child_lock);
+  struct list_elem* e;
+  while (!list_empty (&cur->child_list))
+    {
+      e = list_pop_front (&cur->child_list);
+      struct child_elem* child = list_entry (e, struct child_elem, elem);
+      if (child->child != NULL)
+        {
+          lock_acquire (&child->child->parent_lock);
+          child->child->parent = NULL;
+          lock_release (&child->child->parent_lock);
+        }
+      free (child);
+    }
+  lock_release (&cur->child_lock);
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
@@ -215,28 +363,27 @@ process_exit (void)
       cur->pagedir = NULL;
       pagedir_activate (NULL);
       pagedir_destroy (pd);
-
-      printf ("%s: exit(%d)\n", cur->name, cur->exit_status);
-
-      // Close all open files
-      struct list_elem* e;
-      while (!list_empty (&cur->file_list))
-        {
-          e = list_pop_front (&cur->file_list);
-          struct file_elem* file_elem = list_entry (e, struct file_elem, elem);
-          lock_acquire (&fs_lock);
-          file_close (file_elem->file);
-          lock_release (&fs_lock);
-          free (file_elem);
-        }
-
-      // Close the executable file
-      lock_acquire (&fs_lock);
-      file_allow_write (cur->exec_file);
-      file_close (cur->exec_file);
-      lock_release (&fs_lock);
-      cur->exec_file = NULL;      
+      
+      printf ("%s: exit(%d)\n", cur->name, cur->exit_status);    
     }
+
+  // Close all open files
+  while (!list_empty (&cur->file_list))
+    {
+      e = list_pop_front (&cur->file_list);
+      struct file_elem* file_elem = list_entry (e, struct file_elem, elem);
+      lock_acquire (&fs_lock);
+      file_close (file_elem->file);
+      lock_release (&fs_lock);
+      free (file_elem);
+    }
+
+  // Close the executable file
+  lock_acquire (&fs_lock);
+  file_allow_write (cur->exec_file);
+  file_close (cur->exec_file);
+  lock_release (&fs_lock);
+  cur->exec_file = NULL;      
 }
 
 /* Sets up the CPU for running user code in the current
@@ -493,10 +640,6 @@ load (struct list* arg_list, void (**eip) (void), void **esp)
   file_deny_write(file);
   t->exec_file = file;
 
-  // Initialize the file list and next_fd
-  list_init (&t->file_list);
-  t->next_fd = 2; // 0 and 1 are reserved for stdin and stdout
-
   success = true;
 
  done:
@@ -644,23 +787,24 @@ setup_args (void **esp, struct list* arg_list) {
   for (struct list_elem* e = list_rbegin (arg_list); 
         e != list_rend (arg_list); e = list_prev (e)) {
     struct arg_elem* arg = list_entry (e, struct arg_elem, elem);
-    *esp -= strlen (arg->arg) + 1;
-    memcpy (*esp, arg->arg, strlen (arg->arg) + 1);
-    arg->arg = *esp;
+    size_t len = strlen (arg->arg);
+    *esp -= len + 1;
+    memcpy (*esp, arg->arg, len + 1);
+    arg->addr = *esp;
   }
 
-  ptrdiff_t word_align = (ptrdiff_t)*esp % 4;
+  int word_align = (size_t)(*esp) % 4;
   *esp -= word_align;
-  memcpy (*esp, 0, word_align);
+  memset (*esp, 0, word_align);
 
   *esp -= sizeof (char*);
-  memcpy (*esp, 0, sizeof (char*));
+  memset (*esp, 0, sizeof (char*));
 
-  for (struct list_elem* e = list_begin (arg_list); 
-        e != list_end (arg_list); e = list_next (e)) {
+  for (struct list_elem* e = list_rbegin (arg_list); 
+        e != list_rend (arg_list); e = list_prev (e)) {
     struct arg_elem* arg = list_entry (e, struct arg_elem, elem);
     *esp -= sizeof (char*);
-    memcpy (*esp, &arg->arg, sizeof (char*));
+    memcpy (*esp, &arg->addr, sizeof (char*));
   }
 
   char* argv = *esp;
@@ -668,11 +812,11 @@ setup_args (void **esp, struct list* arg_list) {
   memcpy (*esp, &argv, sizeof (char**));
 
   *esp -= sizeof (int);
-  size_t argc = list_size (arg_list);
+  int argc = (int)list_size (arg_list);
   memcpy (*esp, &argc, sizeof (int));
 
   *esp -= sizeof (void*);
-  memcpy (*esp, 0, sizeof (void*));
+  memset (*esp, 0, sizeof (void*));
 
   return true;
 }

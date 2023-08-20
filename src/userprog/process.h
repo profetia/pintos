@@ -4,8 +4,6 @@
 #include "threads/synch.h"
 #include "threads/thread.h"
 
-typedef int pid_t;
-
 struct lock fs_lock;
 
 void process_init (void);
