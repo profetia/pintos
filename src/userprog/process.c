@@ -119,12 +119,10 @@ process_execute (const char *file_name)
   sema_down(&child->sema);
   if (child->pid == TID_ERROR)
     {
-      cleanup_args(arg_list);
       lock_acquire (&cur->child_lock);
       list_remove(&child->elem);
       lock_release (&cur->child_lock);
       free(child);
-      free(init_args);
       return TID_ERROR;
     }
 
@@ -207,6 +205,8 @@ start_process (void *init_args_)
 {
   struct start_process_args* init_args = init_args_;
   struct list* arg_list = init_args->arg_list;
+  struct child_elem* child = init_args->child;
+  struct thread* parent = init_args->parent;
   struct intr_frame if_;
   bool success;
 
@@ -219,21 +219,18 @@ start_process (void *init_args_)
 
   /* If load failed, quit. */
   cleanup_args (arg_list);
+  free (init_args);
   if (!success) 
     {    
-      sema_up(&init_args->child->sema);    
+      sema_up(&child->sema);    
       thread_exit ();  
     }
   else
     {
       struct thread* cur = thread_current();
-      cur->parent = init_args->parent;
-
-      struct child_elem* child = init_args->child;
+      cur->parent = parent;
       child->pid = cur->tid;
       child->child = cur;
-      
-      free(init_args);
       sema_up(&child->sema);
     }
 
@@ -317,9 +314,6 @@ process_exit (void)
   if (cur->parent != NULL)
     {
       lock_acquire (&cur->parent->child_lock);
-      struct child_elem* front = list_entry (
-          list_front (&cur->parent->child_list), struct child_elem, elem);
-
       struct list_elem* e = list_find_if (
           &cur->parent->child_list, process_child_pred, cur);
       lock_release (&cur->parent->child_lock);
@@ -380,11 +374,13 @@ process_exit (void)
     }
 
   // Close the executable file
-  lock_acquire (&fs_lock);
-  file_allow_write (cur->exec_file);
-  file_close (cur->exec_file);
-  lock_release (&fs_lock);
-  cur->exec_file = NULL;      
+  if (cur->exec_file != NULL)
+    {
+      lock_acquire (&fs_lock);
+      file_allow_write (cur->exec_file);
+      file_close (cur->exec_file);
+      lock_release (&fs_lock);
+    }    
 }
 
 /* Sets up the CPU for running user code in the current

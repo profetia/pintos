@@ -314,13 +314,6 @@ is_valid_word (const void *vaddr)
   return is_valid_vrange(vaddr, sizeof(int));
 }
 
-static bool
-is_valid_byte (const void *vaddr)
-{
-  return is_valid_vaddr(vaddr);
-}
-
-
 /* Returns true if the given string is valid, false 
    otherwise. */
 static bool
