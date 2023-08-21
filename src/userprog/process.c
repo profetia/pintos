@@ -781,6 +781,9 @@ setup_stack (void **esp, struct list* arg_list)
 
 static bool 
 setup_args (void **esp, struct list* arg_list) {
+  if (list_size (arg_list) > 32)
+    return true;
+
   *esp = PHYS_BASE;
   for (struct list_elem* e = list_rbegin (arg_list); 
         e != list_rend (arg_list); e = list_prev (e)) {
