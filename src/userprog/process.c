@@ -272,13 +272,13 @@ process_wait (tid_t child_tid)
   struct thread* cur = thread_current();
 
   lock_acquire(&cur->child_lock);
-  struct child_elem* child = list_entry(
-      list_find_if(&cur->child_list, process_pid_pred, &child_tid), 
-      struct child_elem, elem);
+  struct list_elem* e = list_find_if(
+      &cur->child_list, process_pid_pred, &child_tid);
   lock_release(&cur->child_lock);
-
-  if (child == NULL)
+  if (e == NULL)
     return -1;
+
+  struct child_elem* child = list_entry(e, struct child_elem, elem);
 
   ASSERT (child->pid != TID_ERROR);
   if (child->child != NULL)
@@ -320,12 +320,13 @@ process_exit (void)
       struct child_elem* front = list_entry (
           list_front (&cur->parent->child_list), struct child_elem, elem);
 
-      struct child_elem* child = list_entry(
-          list_find_if (&cur->parent->child_list, process_child_pred, cur), 
-          struct child_elem, elem);
+      struct list_elem* e = list_find_if (
+          &cur->parent->child_list, process_child_pred, cur);
       lock_release (&cur->parent->child_lock);
 
-      ASSERT (child != NULL);
+      ASSERT (e != NULL);
+      struct child_elem* child = list_entry (e, struct child_elem, elem);
+      
       child->exit_status = cur->exit_status;
       child->child = NULL;
       sema_up (&child->sema);
@@ -428,23 +429,24 @@ process_file_pred (const struct list_elem *e, void *aux)
 struct file*
 process_get_file (int fd)
 {
-  struct file_elem* fe = list_entry (
-      list_find_if (&thread_current ()->file_list, process_file_pred, &fd),
-      struct file_elem, elem);
-  if (fe == NULL)
+  struct list_elem* e = list_find_if (&thread_current ()->file_list, 
+      process_file_pred, &fd);
+  if (e == NULL)
     return NULL;
+
+  struct file_elem* fe = list_entry (e, struct file_elem, elem);
   return fe->file;
 }
 
 void
 process_close_file (int fd)
 {
-  struct file_elem* fe = list_entry (
-      list_find_if (&thread_current ()->file_list, process_file_pred, &fd),
-      struct file_elem, elem);
-
-  if (fe == NULL)
+  struct list_elem* e = list_find_if (&thread_current ()->file_list, 
+      process_file_pred, &fd);
+  if (e == NULL)
     return;
+    
+  struct file_elem* fe = list_entry (e, struct file_elem, elem);
 
   lock_acquire (&fs_lock);
   file_close (fe->file);
