@@ -201,6 +201,9 @@ syscall_filesize (int fd)
 static int
 syscall_read (int fd, void *buffer, unsigned size)
 {
+  if (size == 0) 
+    return 0;
+
   if (!is_valid_vrange(buffer, size)) 
     syscall_exit(-1);
 
@@ -226,6 +229,9 @@ syscall_read (int fd, void *buffer, unsigned size)
 static int
 syscall_write (int fd, const void *buffer, unsigned size)
 {
+  if (size == 0) 
+    return 0;
+
   if (!is_valid_vrange(buffer, size)) 
     syscall_exit(-1);
 
