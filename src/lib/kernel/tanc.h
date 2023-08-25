@@ -34,7 +34,7 @@ inline bool log_is_enabled(enum LogLevel level) {
 }
 
 /* Convert log level to string */
-inline static const char* log_level_to_string(enum LogLevel level) {
+inline const char* log_level_to_string(enum LogLevel level) {
   switch (level) {
     case LOG_LEVEL_TRACE: 
       return "TRACE";
