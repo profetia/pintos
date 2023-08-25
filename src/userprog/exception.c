@@ -186,6 +186,7 @@ setup_page (void *fault_addr)
 {
   struct sup_page_table_entry *spte = page_find(
     &thread_current()->sup_page_table, fault_addr);
+  
   if (spte == NULL) 
     {
       spte = page_alloc(&thread_current()->sup_page_table, fault_addr);
@@ -193,8 +194,9 @@ setup_page (void *fault_addr)
         {
           return false;
         }
-     }
-  if (!install_page(fault_addr, spte->frame_entry->frame, true)) 
+    }
+
+  if (!install_page(spte->user_vaddr, spte->frame_entry->frame, true)) 
     {
       if (spte != NULL) 
         {
@@ -202,6 +204,7 @@ setup_page (void *fault_addr)
         }
       return false;
     }
+    
   return true;
 }
 #endif
