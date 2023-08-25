@@ -2,7 +2,7 @@ name: pintos-threads-test
 
 on:
   push:
-    branches: [ "main", "pintos-cicd2" ]
+    branches: [ "main", "pintos-cicd" ]
   pull_request:
     branches: [ "main" ]
 
