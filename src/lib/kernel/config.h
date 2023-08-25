@@ -6,6 +6,6 @@
 #define P3 3
 #define P4 4
 
-#define PROJECT P2
+#define PROJECT P3
 
 #endif // __LIB_KERNEL_CONF_H
