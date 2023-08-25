@@ -4,6 +4,7 @@
 #include <config.h>
 #include <debug.h>
 #include <list.h>
+#include <hash.h>
 #include <stdint.h>
 
 #if PROJECT == P1
@@ -133,6 +134,10 @@ struct thread
     struct lock child_lock;             /* Child lock. */
     struct thread *parent;              /* Parent thread. */
     struct lock parent_lock;            /* Parent lock. */   
+#endif
+
+#ifdef VM
+    struct hash sup_page_table;         /* Supplemental page table. */
 #endif
 
     /* Owned by thread.c. */
