@@ -27,6 +27,8 @@ static bool load (struct list* arg_list, void (**eip) (void), void **esp);
 static struct list* parse_args(const char* file_name);
 static void cleanup_args(struct list* arg_list);
 
+struct lock fs_lock;
+
 /* Initializes the process system */
 void
 process_init (void) 
