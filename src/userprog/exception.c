@@ -6,7 +6,7 @@
 #include "threads/interrupt.h"
 #include "threads/palloc.h"
 #include "threads/thread.h"
-#include "threads/vaddr.h"
+#include "vm/page.h"
 
 /* Number of page faults processed. */
 static long long page_fault_cnt;
@@ -111,6 +111,10 @@ kill (struct intr_frame *f)
     }
 }
 
+#ifdef VM
+static bool setup_page (void *fault_addr);
+#endif
+
 /* Page fault handler.  This is a skeleton that must be filled in
    to implement virtual memory.  Some solutions to project 2 may
    also require modifying this code.
@@ -146,21 +150,20 @@ page_fault (struct intr_frame *f)
   /* Count page faults. */
   page_fault_cnt++;
 
-  if (fault_addr == NULL || !is_user_vaddr(fault_addr) 
-      || fault_addr < (void *)0x08048000 || fault_addr < f->esp) {
-      goto done;
-  }
+#ifdef VM
+  bool success = true;
+  if (is_valid_vaddr(fault_addr, f->esp)) 
+    {
+      success = setup_page(fault_addr);
+    } 
+  else 
+    {
+      success = false;
+    }
 
-  // Acquire a new frame and install the page
-  // TODO: Handle complicated cases like swapping and mmap.
-  uint8_t *kpage = palloc_get_page(PAL_USER | PAL_ZERO);
-  ASSERT(kpage != NULL);
-   if (!install_page(fault_addr, kpage, true)) {
-         palloc_free_page(kpage);
-         goto done;
-   }
+  if (success) return;
+#endif
 
-  done:
   /* Determine cause. */
   not_present = (f->error_code & PF_P) == 0;
   write = (f->error_code & PF_W) != 0;
@@ -177,3 +180,28 @@ page_fault (struct intr_frame *f)
   kill (f);
 }
 
+#ifdef VM
+static bool
+setup_page (void *fault_addr)
+{
+  struct sup_page_table_entry *spte = page_find(
+    &thread_current()->sup_page_table, fault_addr);
+  if (spte == NULL) 
+    {
+      spte = page_alloc(&thread_current()->sup_page_table, fault_addr);
+      if (spte == NULL) 
+        {
+          return false;
+        }
+     }
+  if (!install_page(fault_addr, spte->frame_entry->frame, true)) 
+    {
+      if (spte != NULL) 
+        {
+          page_free(&thread_current()->sup_page_table, fault_addr);
+        }
+      return false;
+    }
+  return true;
+}
+#endif

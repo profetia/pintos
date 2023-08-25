@@ -1,6 +1,7 @@
 #include "threads/init.h"
 #include <console.h>
 #include <debug.h>
+#include <tanc.h>
 #include <inttypes.h>
 #include <limits.h>
 #include <random.h>
@@ -30,6 +31,9 @@
 #include "userprog/tss.h"
 #else
 #include "tests/threads/tests.h"
+#endif
+#ifdef VM
+#include "vm/frame.h"
 #endif
 #ifdef FILESYS
 #include "devices/block.h"
@@ -120,6 +124,11 @@ main (void)
   thread_start ();
   serial_init_queue ();
   timer_calibrate ();
+
+#ifdef VM
+  /* Initialize VM. */
+  frame_table_init ();
+#endif
 
 #ifdef FILESYS
   /* Initialize file system. */

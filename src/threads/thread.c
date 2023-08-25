@@ -1,5 +1,6 @@
 #include "threads/thread.h"
 #include <debug.h>
+#include <tanc.h>
 #include <stddef.h>
 #include <random.h>
 #include <stdio.h>

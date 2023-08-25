@@ -21,6 +21,10 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 
+#ifdef VM
+#include "vm/page.h"
+#endif
+
 static thread_func start_process NO_RETURN;
 static bool load (struct list* arg_list, void (**eip) (void), void **esp);
 
@@ -219,6 +223,10 @@ start_process (void *init_args_)
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load (arg_list, &if_.eip, &if_.esp);
 
+#ifdef VM
+  sup_page_table_init (&thread_current()->sup_page_table);
+#endif  
+
   /* If load failed, quit. */
   cleanup_args (arg_list);
   free (init_args);
@@ -383,6 +391,10 @@ process_exit (void)
       file_close (cur->exec_file);
       lock_release (&fs_lock);
     }    
+
+#ifdef VM
+  sup_page_table_destroy (&cur->sup_page_table);
+#endif      
 }
 
 /* Sets up the CPU for running user code in the current
