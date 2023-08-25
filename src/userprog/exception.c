@@ -2,8 +2,11 @@
 #include <inttypes.h>
 #include <stdio.h>
 #include "userprog/gdt.h"
+#include "userprog/process.h"
 #include "threads/interrupt.h"
+#include "threads/palloc.h"
 #include "threads/thread.h"
+#include "threads/vaddr.h"
 
 /* Number of page faults processed. */
 static long long page_fault_cnt;
@@ -143,6 +146,21 @@ page_fault (struct intr_frame *f)
   /* Count page faults. */
   page_fault_cnt++;
 
+  if (fault_addr == NULL || !is_user_vaddr(fault_addr) 
+      || fault_addr < (void *)0x08048000 || fault_addr < f->esp) {
+      goto done;
+  }
+
+  // Acquire a new frame and install the page
+  // TODO: Handle complicated cases like swapping and mmap.
+  uint8_t *kpage = palloc_get_page(PAL_USER | PAL_ZERO);
+  ASSERT(kpage != NULL);
+   if (!install_page(fault_addr, kpage, true)) {
+         palloc_free_page(kpage);
+         goto done;
+   }
+
+  done:
   /* Determine cause. */
   not_present = (f->error_code & PF_P) == 0;
   write = (f->error_code & PF_W) != 0;
