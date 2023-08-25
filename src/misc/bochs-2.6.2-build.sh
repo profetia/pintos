@@ -23,12 +23,12 @@ CFGOPTS="--with-x --with-x11 --with-term --with-nogui --prefix=$DSTDIR"
 mkdir plain &&
         cd plain && 
         ../configure $CFGOPTS --enable-gdb-stub && 
-        make && 
+        make -j && 
         make install &&
         cd ..
 mkdir with-dbg &&
         cd with-dbg &&
         ../configure --enable-debugger --disable-debugger-gui $CFGOPTS &&
-        make &&
+        make -j &&
         cp bochs $DSTDIR/bin/bochs-dbg &&
         cd ..
