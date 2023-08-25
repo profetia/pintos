@@ -4,7 +4,7 @@
 #include "threads/synch.h"
 #include "threads/thread.h"
 
-static struct lock fs_lock;
+extern struct lock fs_lock;
 
 void process_init (void);
 tid_t process_execute (const char *file_name);
