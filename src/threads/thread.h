@@ -1,13 +1,12 @@
 #ifndef THREADS_THREAD_H
 #define THREADS_THREAD_H
 
-#include <config.h>
 #include <debug.h>
 #include <list.h>
 #include <hash.h>
 #include <stdint.h>
 
-#if PROJECT == P1
+#ifdef THREADS
 #include "threads/fixed-point.h"
 #endif
 
@@ -32,7 +31,7 @@ typedef int tid_t;
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
 
-#if PROJECT == P1
+#ifdef THREADS
 /* Nice values. */
 #define NICE_MIN -20                    /* Lowest nice value. */
 #define NICE_DEFAULT 0                  /* Default nice value. */
@@ -105,7 +104,7 @@ struct thread
     int priority;                       /* Priority. */
     struct list_elem allelem;           /* List element for all threads list. */
 
-#if PROJECT == P1
+#ifdef THREADS
     int64_t wakeup_tick;                /* Wakeup tick. */
     struct list_elem sleep_elem;        /* List element for sleep threads list. */
 
@@ -178,7 +177,7 @@ void thread_foreach (thread_action_func *, void *);
 int thread_get_priority (void);
 void thread_set_priority (int);
 
-#if PROJECT == P1
+#ifdef THREADS
 bool thread_priority_elem_less (const struct list_elem *a,
                            const struct list_elem *b,
                            void *aux UNUSED);

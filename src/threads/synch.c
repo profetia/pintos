@@ -115,7 +115,7 @@ sema_up (struct semaphore *sema)
   old_level = intr_disable ();
   if (!list_empty (&sema->waiters)) 
     {
-#if PROJECT == P1
+#ifdef THREADS
       // Unblocks the thread with the highest priority
       struct thread *t = list_entry (
           list_max (&sema->waiters, 
@@ -131,7 +131,7 @@ sema_up (struct semaphore *sema)
     }
 
   sema->value++;
-#if PROJECT == P1
+#ifdef THREADS
   thread_yield (); 
   // thread_yield as the current thread may not be the highest priority
 #endif
@@ -214,7 +214,7 @@ lock_acquire (struct lock *lock)
   ASSERT (!intr_context ());
   ASSERT (!lock_held_by_current_thread (lock));
 
-#if PROJECT == P1
+#ifdef THREADS
   if (thread_mlfqs) 
     {
       sema_down (&lock->semaphore);
@@ -240,7 +240,7 @@ lock_acquire (struct lock *lock)
   sema_down (&lock->semaphore);
   lock->holder = thread_current ();
 
-#if PROJECT == P1
+#ifdef THREADS
   intr_set_level (old_level);
 #endif
 }
@@ -276,7 +276,7 @@ lock_release (struct lock *lock)
   ASSERT (lock != NULL);
   ASSERT (lock_held_by_current_thread (lock));
 
-#if PROJECT == P1
+#ifdef THREADS
   if (thread_mlfqs)
     {
       lock->holder = NULL;
@@ -299,7 +299,7 @@ lock_release (struct lock *lock)
   lock->holder = NULL;
   sema_up (&lock->semaphore);
 
-#if PROJECT == P1
+#ifdef THREADS
   intr_set_level (old_level);
   thread_yield ();
 #endif
@@ -323,7 +323,7 @@ struct semaphore_elem
     struct semaphore semaphore;         /* This semaphore. */
   };
 
-#if PROJECT == P1
+#ifdef THREADS
 static bool sema_priority_less (const struct list_elem *a,
                                 const struct list_elem *b,
                                 void *aux UNUSED)
@@ -405,7 +405,7 @@ cond_signal (struct condition *cond, struct lock *lock UNUSED)
 
   if (!list_empty (&cond->waiters)) 
     {
-#if PROJECT == P1      
+#ifdef THREADS      
       // Wake up the highest priority waiter
       struct semaphore_elem *sema_elem = list_entry (
           list_max (&cond->waiters, sema_priority_less, NULL), 

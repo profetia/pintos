@@ -24,7 +24,7 @@
    that are ready to run but not actually running. */
 static struct list ready_list;
 
-#if PROJECT == P1
+#ifdef THREADS      
 /* List of sleeping threads. Processes are added to this list
    when they are sleeping and removed when they are woken up. */
 static struct list sleep_list;
@@ -60,7 +60,7 @@ static long long user_ticks;    /* # of timer ticks in user programs. */
 #define TIME_SLICE 4            /* # of timer ticks to give each thread. */
 static unsigned thread_ticks;   /* # of timer ticks since last yield. */
 
-#if PROJECT == P1
+#ifdef THREADS      
 static f32 load_avg;            /* System load average. */
 #endif
 
@@ -81,7 +81,7 @@ static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 
-#if PROJECT == P1
+#ifdef THREADS      
 static bool thread_wakeup_tick_less (const struct list_elem *a,
                                      const struct list_elem *b,
                                      void *aux);
@@ -111,7 +111,7 @@ thread_init (void)
 
   lock_init (&tid_lock);
   list_init (&ready_list);
-#if PROJECT == P1
+#ifdef THREADS
   list_init (&sleep_list);
 #endif
   list_init (&all_list);
@@ -122,7 +122,7 @@ thread_init (void)
   initial_thread->status = THREAD_RUNNING;
   initial_thread->tid = allocate_tid ();
 
-#if PROJECT == P1
+#ifdef THREADS
   if (thread_mlfqs) // Initialize mlfqs variables.
     {
       load_avg = to_f32 (0);
@@ -166,7 +166,7 @@ thread_tick (void)
   else
     kernel_ticks++;
 
-#if PROJECT == P1
+#ifdef THREADS
   // update recent_cpu for current thread
   if (thread_mlfqs && t != idle_thread) 
     {
@@ -242,7 +242,7 @@ thread_create (const char *name, int priority,
   /* Add to run queue. */
   thread_unblock (t);
 
-#if PROJECT == P1
+#ifdef THREADS
   // thread_yield as the new thread may have higher priority
   thread_yield ();
 #endif
@@ -360,7 +360,7 @@ thread_yield (void)
   intr_set_level (old_level);
 }
 
-#if PROJECT == P1
+#ifdef THREADS
 /* Send the current thread to sleep for ticks, then block it. */
 void 
 thread_sleep(int64_t ticks)
@@ -426,7 +426,7 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
-#if PROJECT == P1
+#ifdef THREADS
   ASSERT (new_priority >= PRI_MIN && new_priority <= PRI_MAX);  
 
   if (thread_mlfqs) return;
@@ -454,7 +454,7 @@ thread_get_priority (void)
   return thread_current ()->priority;
 }
 
-#if PROJECT == P1
+#ifdef THREADS
 bool
 thread_priority_elem_less (const struct list_elem *a, const struct list_elem *b, 
                       void *aux UNUSED)
@@ -588,7 +588,7 @@ void
 thread_set_nice (int nice UNUSED) 
 {
   /* Not yet implemented. */
-#if PROJECT == P1
+#ifdef THREADS
   ASSERT (nice >= NICE_MIN && nice <= NICE_MAX);
 
   struct thread *cur = thread_current ();
@@ -605,7 +605,7 @@ int
 thread_get_nice (void) 
 {
   /* Not yet implemented. */
-#if PROJECT == P1
+#ifdef THREADS
   return thread_current ()->nice;
 #else
   return 0;
@@ -617,7 +617,7 @@ int
 thread_get_load_avg (void) 
 {
   /* Not yet implemented. */
-#if PROJECT == P1
+#ifdef THREADS
   return to_int (mul_f32_int (load_avg, 100));
 #else
   return 0;
@@ -629,7 +629,7 @@ int
 thread_get_recent_cpu (void) 
 {
   /* Not yet implemented. */
-#if PROJECT == P1
+#ifdef THREADS
   return to_int (mul_f32_int (thread_current ()->recent_cpu, 100));
 #else
   return 0;
@@ -725,7 +725,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
 
-#if PROJECT == P1
+#ifdef THREADS
   t->init_priority = priority;  
   list_init (&t->donor_list);
 #endif
@@ -776,7 +776,7 @@ next_thread_to_run (void)
 {
   if (list_empty (&ready_list))
     return idle_thread;
-#if PROJECT == P1
+#ifdef THREADS
   // Pick the thread with the highest priority
   struct list_elem *e = list_max (&ready_list, thread_priority_elem_less, NULL);
   list_remove (e);
@@ -869,7 +869,7 @@ allocate_tid (void)
   return tid;
 }
 
-#if PROJECT == P1
+#ifdef THREADS
 static bool thread_wakeup_tick_less (const struct list_elem *a,
                                      const struct list_elem *b,
                                      void *aux UNUSED)

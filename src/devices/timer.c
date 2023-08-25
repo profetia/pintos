@@ -93,7 +93,7 @@ timer_sleep (int64_t ticks)
 
   ASSERT (intr_get_level () == INTR_ON);
 
-#if PROJECT == P1
+#ifdef THREADS
   // sleep until wakeup by timer_interrupt
   thread_sleep(start + ticks);
 #else
@@ -177,14 +177,14 @@ timer_print_stats (void)
 static void
 timer_interrupt (struct intr_frame *args UNUSED)
 {
-#if PROJECT == P1
+#ifdef THREADS
   ASSERT (intr_get_level () == INTR_OFF);
 #endif
 
   ticks++;
   thread_tick ();
 
-#if PROJECT == P1
+#ifdef THREADS
   // wakeup sleeping threads
   thread_wakeup(ticks);
 
