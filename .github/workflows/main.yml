@@ -17,7 +17,7 @@ jobs:
     - name: install qemu
       run: sudo apt-get install qemu-system-i386
     - name: install pintos
-      run: sudo cp ./bin/* /usr/local/bin/; wget https://nchc.dl.sourceforge.net/project/bochs/bochs/2.6.2/bochs-2.6.2.tar.gz; PINTOSDIR=`pwd -P`/pintos;SRCDIR=`pwd -P`; DSTDIR=/usr/local; sudo env SRCDIR=$SRCDIR PINTOSDIR=$PINTOSDIR DSTDIR=$DSTDIR sh $PINTOSDIR/src/misc/bochs-2.6.2-build.sh
+      run: sudo cp ./bin/* /usr/local/bin/; wget https://nchc.dl.sourceforge.net/project/bochs/bochs/2.6.2/bochs-2.6.2.tar.gz; PINTOSDIR=`pwd -P`;SRCDIR=`pwd -P`; DSTDIR=/usr/local; sudo env SRCDIR=$SRCDIR PINTOSDIR=$PINTOSDIR DSTDIR=$DSTDIR sh $PINTOSDIR/src/misc/bochs-2.6.2-build.sh
       # run tests
     - name: test threads
       run: cd src/threads && make && make check 
