@@ -1,4 +1,4 @@
-name: pintos-threads-test
+name: pintos-test
 
 on:
   push:
