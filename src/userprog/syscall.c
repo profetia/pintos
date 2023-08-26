@@ -12,6 +12,10 @@
 #include "userprog/pagedir.h"
 #include "userprog/process.h"
 
+#ifdef VM
+#include "vm/page.h"
+#endif
+
 static void syscall_handler (struct intr_frame *);
 
 static void syscall_halt (void);

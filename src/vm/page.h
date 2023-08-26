@@ -23,14 +23,15 @@ void sup_page_table_init(struct hash* sup_page_table);
 void sup_page_table_destroy(struct hash* sup_page_table);
 
 struct sup_page_table_entry* page_alloc(
-    struct hash* sup_page_table, void* user_vaddr);
+    struct hash* sup_page_table, const void* user_vaddr);
 void page_free(struct hash* sup_page_table, 
     struct sup_page_table_entry* entry);
 
-bool is_stack_vaddr(void* user_vaddr, void* esp);
-bool is_valid_vaddr(void* user_vaddr, void* esp);
+bool is_stack_vaddr(const void* esp, const void* user_vaddr);
 
 struct sup_page_table_entry* page_find(
-    struct hash* sup_page_table, void* user_vaddr);
+    struct hash* sup_page_table, const void* user_vaddr);
+
+bool page_pull (const void* user_addr);
 
 #endif

@@ -3,7 +3,9 @@
 #include <string.h>
 #include "threads/interrupt.h"
 #include "threads/malloc.h"
+#include "threads/thread.h"
 #include "threads/vaddr.h"
+#include "userprog/process.h"
 
 static unsigned 
 sup_page_hash(const struct hash_elem* e, void* aux UNUSED) 
@@ -35,7 +37,7 @@ sup_page_table_destroy(struct hash* sup_page_table) {
 }
 
 struct sup_page_table_entry*
-page_alloc(struct hash* sup_page_table, void* user_vaddr) {
+page_alloc(struct hash* sup_page_table, const void* user_vaddr) {
   ASSERT(sup_page_table != NULL);
   ASSERT(user_vaddr != NULL);
 
@@ -78,23 +80,15 @@ page_free(struct hash* sup_page_table, struct sup_page_table_entry* entry)
 }
 
 bool
-is_stack_vaddr(void* user_vaddr, void* esp) {
+is_stack_vaddr(const void* esp, const void* user_vaddr) {
   ASSERT(esp != NULL);
 
-  return user_vaddr != NULL && user_vaddr >= STACK_BOTTOM && 
+  return user_vaddr >= STACK_BOTTOM && 
       user_vaddr >= esp - 32;
 }
 
-bool
-is_valid_vaddr(void* user_vaddr, void* esp) {
-  ASSERT(esp != NULL);
-
-  return user_vaddr != NULL && is_user_vaddr(user_vaddr) && is_stack_vaddr(
-      user_vaddr, esp);
-}
-
 struct sup_page_table_entry*
-page_find(struct hash* sup_page_table, void* user_vaddr) {
+page_find(struct hash* sup_page_table, const void* user_vaddr) {
   ASSERT(sup_page_table != NULL);
   ASSERT(user_vaddr != NULL);
 
@@ -107,4 +101,33 @@ page_find(struct hash* sup_page_table, void* user_vaddr) {
   }
 
   return hash_entry(elem, struct sup_page_table_entry, elem);
+}
+
+bool
+page_pull (const void* user_addr)
+{
+  ASSERT (user_addr != NULL);
+
+    struct sup_page_table_entry *spte = page_find(
+    &thread_current()->sup_page_table, user_addr);
+  
+  if (spte == NULL) 
+    {
+      spte = page_alloc(&thread_current()->sup_page_table, user_addr);
+      if (spte == NULL) 
+        {
+          return false;
+        }
+    }
+
+  if (!install_page(spte->user_vaddr, spte->frame_entry->frame, true)) 
+    {
+      if (spte != NULL) 
+        {
+          page_free(&thread_current()->sup_page_table, spte);
+        }
+      return false;
+    }
+
+  return true;
 }

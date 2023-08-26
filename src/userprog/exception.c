@@ -2,11 +2,14 @@
 #include <inttypes.h>
 #include <stdio.h>
 #include "userprog/gdt.h"
-#include "userprog/process.h"
 #include "threads/interrupt.h"
 #include "threads/palloc.h"
 #include "threads/thread.h"
+#include "threads/vaddr.h"
+
+#ifdef VM
 #include "vm/page.h"
+#endif
 
 /* Number of page faults processed. */
 static long long page_fault_cnt;
@@ -111,10 +114,6 @@ kill (struct intr_frame *f)
     }
 }
 
-#ifdef VM
-static bool setup_page (void *fault_addr);
-#endif
-
 /* Page fault handler.  This is a skeleton that must be filled in
    to implement virtual memory.  Some solutions to project 2 may
    also require modifying this code.
@@ -150,24 +149,26 @@ page_fault (struct intr_frame *f)
   /* Count page faults. */
   page_fault_cnt++;
 
-#ifdef VM
-  bool success = true;
-  if (is_valid_vaddr(fault_addr, f->esp)) 
-    {
-      success = setup_page(fault_addr);
-    } 
-  else 
-    {
-      success = false;
-    }
-
-  if (success) return;
-#endif
-
   /* Determine cause. */
   not_present = (f->error_code & PF_P) == 0;
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
+
+#ifdef VM
+  bool success = true;
+  if (fault_addr == NULL || !not_present || 
+      (user && !is_user_vaddr(fault_addr)) || 
+      !is_stack_vaddr(f->esp, fault_addr))
+    {
+      success = false;
+    } 
+  else 
+    {
+      success = page_pull(fault_addr);
+    }
+
+  if (success) return;
+#endif
 
   /* To implement virtual memory, delete the rest of the function
      body, and replace it with code that brings in the page to
@@ -179,32 +180,3 @@ page_fault (struct intr_frame *f)
           user ? "user" : "kernel");
   kill (f);
 }
-
-#ifdef VM
-static bool
-setup_page (void *fault_addr)
-{
-  struct sup_page_table_entry *spte = page_find(
-    &thread_current()->sup_page_table, fault_addr);
-  
-  if (spte == NULL) 
-    {
-      spte = page_alloc(&thread_current()->sup_page_table, fault_addr);
-      if (spte == NULL) 
-        {
-          return false;
-        }
-    }
-
-  if (!install_page(spte->user_vaddr, spte->frame_entry->frame, true)) 
-    {
-      if (spte != NULL) 
-        {
-          page_free(&thread_current()->sup_page_table, fault_addr);
-        }
-      return false;
-    }
-    
-  return true;
-}
-#endif
