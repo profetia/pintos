@@ -34,6 +34,7 @@
 #endif
 #ifdef VM
 #include "vm/frame.h"
+#include "vm/swap.h"
 #endif
 #ifdef FILESYS
 #include "devices/block.h"
@@ -125,16 +126,17 @@ main (void)
   serial_init_queue ();
   timer_calibrate ();
 
-#ifdef VM
-  /* Initialize VM. */
-  frame_table_init ();
-#endif
-
 #ifdef FILESYS
   /* Initialize file system. */
   ide_init ();
   locate_block_devices ();
   filesys_init (format_filesys);
+#endif
+
+#ifdef VM
+  /* Initialize VM. */
+  frame_table_init ();
+  swap_init ();
 #endif
 
   printf ("Boot complete.\n");

@@ -14,7 +14,9 @@ struct frame_table_entry {
 
 void frame_table_init (void);
 
-struct frame_table_entry* frame_alloc (struct sup_page_table_entry *page_entry);
+struct frame_table_entry* frame_alloc (
+    struct sup_page_table_entry *page_entry, uint32_t* user_vaddr, 
+    bool writable);
 void frame_free (struct frame_table_entry *fte);
 
 

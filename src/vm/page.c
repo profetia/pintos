@@ -1,11 +1,12 @@
 #include "vm/page.h"
 #include <debug.h>
 #include <string.h>
+#include "filesys/file.h"
 #include "threads/interrupt.h"
 #include "threads/malloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
-#include "userprog/process.h"
+#include "vm/swap.h"
 
 static unsigned 
 sup_page_hash(const struct hash_elem* e, void* aux UNUSED) 
@@ -37,7 +38,8 @@ sup_page_table_destroy(struct hash* sup_page_table) {
 }
 
 struct sup_page_table_entry*
-page_alloc(struct hash* sup_page_table, const void* user_vaddr) {
+page_alloc(struct hash* sup_page_table, const void* user_vaddr, bool writable) 
+{
   ASSERT(sup_page_table != NULL);
   ASSERT(user_vaddr != NULL);
 
@@ -47,16 +49,15 @@ page_alloc(struct hash* sup_page_table, const void* user_vaddr) {
     return NULL;
   }
 
-  entry->frame_entry = frame_alloc(entry);
+  entry->frame_entry = frame_alloc(entry, pg_round_down(user_vaddr), writable);
   if (entry->frame_entry == NULL) {
     free(entry);
     return NULL;
   }
 
   entry->user_vaddr = pg_round_down(user_vaddr);
-  entry->access_time = NULL;
-  entry->dirty = false;
-  entry->accessed = false;
+  entry->writable = writable;
+  entry->location = PAGE_LOC_MEMORY;
 
   struct hash_elem* old_elem = hash_insert(sup_page_table, &entry->elem);
   if (old_elem != NULL) {
@@ -75,7 +76,21 @@ page_free(struct hash* sup_page_table, struct sup_page_table_entry* entry)
   ASSERT(entry != NULL);
 
   hash_delete(sup_page_table, &entry->elem);
-  frame_free(entry->frame_entry);
+
+  switch (entry->location) {
+    case PAGE_LOC_SWAP:
+      swap_free(entry->swap_index);
+      break;
+    case PAGE_LOC_FILESYS:
+      file_close(entry->file);
+      break;
+    case PAGE_LOC_MEMORY:
+      frame_free(entry->frame_entry);
+      break;
+    default:
+      NOT_REACHED();
+  }
+  
   free(entry);
 }
 
@@ -108,24 +123,30 @@ page_pull (const void* user_addr)
 {
   ASSERT (user_addr != NULL);
 
-    struct sup_page_table_entry *spte = page_find(
-    &thread_current()->sup_page_table, user_addr);
-  
+  struct sup_page_table_entry *spte = page_find(
+  &thread_current()->sup_page_table, user_addr);
+
   if (spte == NULL) 
     {
-      spte = page_alloc(&thread_current()->sup_page_table, user_addr);
-      if (spte == NULL) 
-        {
-          return false;
-        }
+      spte = page_alloc(&thread_current()->sup_page_table, user_addr, true);
+      ASSERT (spte != NULL);
     }
-
-  if (!install_page(spte->user_vaddr, spte->frame_entry->frame, true)) 
+  else if (spte->location == PAGE_LOC_MEMORY)
     {
-      if (spte != NULL) 
-        {
-          page_free(&thread_current()->sup_page_table, spte);
-        }
+      struct frame_table_entry *fte = frame_alloc(spte, spte->user_vaddr, 
+          spte->writable);
+      ASSERT (fte != NULL);
+      spte->frame_entry = fte;
+      spte->location = PAGE_LOC_MEMORY;
+      swap_reclaim((uint8_t*)fte->frame, spte->swap_index);
+      spte->swap_index = BITMAP_ERROR;
+    }
+  else if (spte->location == PAGE_LOC_FILESYS) 
+    {
+      // TODO: Implement file system mapping
+    }
+  else
+    {
       return false;
     }
 
