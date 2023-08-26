@@ -216,16 +216,16 @@ start_process (void *init_args_)
   struct intr_frame if_;
   bool success;
 
+#ifdef VM
+  sup_page_table_init (&thread_current()->sup_page_table);
+#endif  
+
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load (arg_list, &if_.eip, &if_.esp);
-
-#ifdef VM
-  sup_page_table_init (&thread_current()->sup_page_table);
-#endif  
 
   /* If load failed, quit. */
   cleanup_args (arg_list);
@@ -740,6 +740,19 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
+#ifdef VM
+      struct sup_page_table_entry* spte = page_alloc (
+          &thread_current ()->sup_page_table, upage, writable);
+      if (spte == NULL)
+        return false;
+
+      if (file_read (file, spte->frame_entry->frame, (off_t)page_read_bytes) != (int) page_read_bytes)
+        {
+          page_free (&thread_current ()->sup_page_table, spte);
+          return false; 
+        }
+      memset (spte->frame_entry->frame + page_read_bytes, 0, page_zero_bytes);
+#else
       /* Get a page of memory. */
       uint8_t *kpage = palloc_get_page (PAL_USER);
       if (kpage == NULL)
@@ -759,6 +772,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
           palloc_free_page (kpage);
           return false; 
         }
+#endif
 
       /* Advance. */
       read_bytes -= page_read_bytes;
@@ -776,6 +790,17 @@ setup_stack (void **esp, struct list* arg_list)
   uint8_t *kpage;
   bool success = false;
 
+#ifdef VM
+  struct sup_page_table_entry* spte = page_alloc (
+      &thread_current ()->sup_page_table, ((uint8_t *) PHYS_BASE) - PGSIZE, true);
+  if (spte != NULL)
+    {
+      success = setup_args (esp, arg_list); 
+
+      if (!success)
+        page_free (&thread_current ()->sup_page_table, spte);
+    }
+#else
   kpage = palloc_get_page (PAL_USER | PAL_ZERO);
   if (kpage != NULL) 
     {
@@ -786,6 +811,8 @@ setup_stack (void **esp, struct list* arg_list)
       if (!success)
         palloc_free_page (kpage);
     }
+#endif
+
   return success;
 }
 
