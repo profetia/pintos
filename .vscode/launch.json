@@ -246,7 +246,41 @@
                 "loadAll": true,
                 "exceptionList": ""
             }
-        },                        
+        },   
+        {
+            "name": "[P3] Debug page-merge-mm",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/vm/build/kernel.o",
+            "preLaunchTask": "[P3] Run page-merge-mm",
+            "miDebuggerServerAddress": "127.0.0.1:1234",
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/src",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                },
+                {
+                    "text": "source -v ${workspaceFolder}/src/misc/gdb-macros",
+                    "description": "Import Pintos GDB macros file",
+                    "ignoreFailures": false
+                },
+                {
+                    "text": "loadusersymbols ${workspaceFolder}/src/vm/build/tests/vm/page-merge-mm",
+                    "description": "Import user program",
+                    "ignoreFailures": false
+                }
+            ],
+            "symbolLoadInfo": {
+                "loadAll": true,
+                "exceptionList": ""
+            }
+        },                               
         {
             "name": "[P3] Debug page-parallel",
             "type": "cppdbg",
