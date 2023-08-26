@@ -94,7 +94,7 @@ page_free(struct hash* sup_page_table, struct sup_page_table_entry* entry)
   free(entry);
 }
 
-bool
+static bool
 is_stack_vaddr(const void* esp, const void* user_vaddr) {
   ASSERT(esp != NULL);
 
@@ -118,9 +118,12 @@ page_find(struct hash* sup_page_table, const void* user_vaddr) {
   return hash_entry(elem, struct sup_page_table_entry, elem);
 }
 
+static void page_reclaim (struct sup_page_table_entry *spte);
+
 bool
-page_pull (const void* user_addr)
+page_pull (const void* esp, const void* user_addr, bool write)
 {
+  ASSERT (esp != NULL);
   ASSERT (user_addr != NULL);
 
   struct sup_page_table_entry *spte = page_find(
@@ -128,27 +131,46 @@ page_pull (const void* user_addr)
 
   if (spte == NULL) 
     {
+      if (!is_stack_vaddr(esp, user_addr)) return false;        
       spte = page_alloc(&thread_current()->sup_page_table, user_addr, true);
       ASSERT (spte != NULL);
     }
-  else if (spte->location == PAGE_LOC_MEMORY)
+  else 
     {
-      struct frame_table_entry *fte = frame_alloc(spte, spte->user_vaddr, 
-          spte->writable);
-      ASSERT (fte != NULL);
-      spte->frame_entry = fte;
-      spte->location = PAGE_LOC_MEMORY;
-      swap_reclaim((uint8_t*)fte->frame, spte->swap_index);
-      spte->swap_index = BITMAP_ERROR;
-    }
-  else if (spte->location == PAGE_LOC_FILESYS) 
-    {
-      // TODO: Implement file system mapping
-    }
-  else
-    {
-      return false;
+      if (write && !spte->writable) return false;
+
+      switch (spte->location)
+        {
+          case PAGE_LOC_MEMORY:
+            break;
+          case PAGE_LOC_SWAP:
+            page_reclaim(spte);
+            break;
+          case PAGE_LOC_FILESYS:
+            // TODO: Implement file system mapping
+            break;
+          case PAGE_LOC_ZERO:
+            // TODO: Implement zero page
+            break;
+          default:
+            return false;        
+        }   
     }
 
   return true;
 }
+
+static void
+page_reclaim (struct sup_page_table_entry *spte) 
+{
+  ASSERT (spte != NULL);
+
+  struct frame_table_entry *fte = frame_alloc(
+      spte, spte->user_vaddr, spte->writable);
+  ASSERT (fte != NULL);
+  spte->frame_entry = fte;
+  spte->location = PAGE_LOC_MEMORY;
+  swap_reclaim((uint8_t*)fte->frame, spte->swap_index);
+  spte->swap_index = BITMAP_ERROR;
+}
+  

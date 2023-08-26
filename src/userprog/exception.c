@@ -157,14 +157,13 @@ page_fault (struct intr_frame *f)
 #ifdef VM
   bool success = true;
   if (fault_addr == NULL || !not_present || 
-      (user && !is_user_vaddr(fault_addr)) || 
-      !is_stack_vaddr(f->esp, fault_addr))
+      (user && !is_user_vaddr(fault_addr)))
     {
       success = false;
     } 
   else 
     {
-      success = page_pull(fault_addr);
+      success = page_pull(f->esp, fault_addr, write);
     }
 
   if (success) return;

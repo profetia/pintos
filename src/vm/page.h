@@ -10,6 +10,7 @@
 #define STACK_BOTTOM ((void*) 0x08048000)
 
 enum page_location {
+  PAGE_LOC_ZERO,
   PAGE_LOC_SWAP,
   PAGE_LOC_FILESYS,
   PAGE_LOC_MEMORY,
@@ -39,11 +40,9 @@ struct sup_page_table_entry* page_alloc(
 void page_free(struct hash* sup_page_table, 
     struct sup_page_table_entry* entry);
 
-bool is_stack_vaddr(const void* esp, const void* user_vaddr);
-
 struct sup_page_table_entry* page_find(
     struct hash* sup_page_table, const void* user_vaddr);
 
-bool page_pull (const void* user_addr);
+bool page_pull (const void* esp, const void* user_addr, bool write);
 
 #endif
