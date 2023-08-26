@@ -35,7 +35,8 @@ read_from_block (const uint8_t *frame, size_t index)
   lock_acquire(&swap_lock);
   for (size_t i = 0; i < PAGE_BLOCK_SIZE; i++) 
     {
-        block_read(swap_block, index + i, frame + (i * BLOCK_SECTOR_SIZE));
+        block_read(swap_block, PAGE_BLOCK_SIZE * index + i, 
+            frame + (i * BLOCK_SECTOR_SIZE));
     }
   lock_release(&swap_lock);
 }
@@ -51,7 +52,7 @@ write_to_block(uint8_t* frame, size_t index)
   lock_acquire(&swap_lock);
   for (int i = 0; i < PAGE_BLOCK_SIZE; i++) 
     {
-        block_write(swap_block, index + i, frame + (i * BLOCK_SECTOR_SIZE));
+        block_write(swap_block, PAGE_BLOCK_SIZE * index + i, frame + (i * BLOCK_SECTOR_SIZE));
     }
   lock_release(&swap_lock);
 }

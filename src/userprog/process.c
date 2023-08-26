@@ -787,7 +787,6 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 static bool
 setup_stack (void **esp, struct list* arg_list) 
 {
-  uint8_t *kpage;
   bool success = false;
 
 #ifdef VM
@@ -801,7 +800,7 @@ setup_stack (void **esp, struct list* arg_list)
         page_free (&thread_current ()->sup_page_table, spte);
     }
 #else
-  kpage = palloc_get_page (PAL_USER | PAL_ZERO);
+  uint8_t *kpage = palloc_get_page (PAL_USER | PAL_ZERO);
   if (kpage != NULL) 
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
