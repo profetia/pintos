@@ -31,6 +31,9 @@ static void syscall_seek (int fd, unsigned position);
 static unsigned syscall_tell (int fd);
 static void syscall_close (int fd);
 
+static int syscall_mmap (int fd, void *addr);
+static void syscall_munmap (int mapid);
+
 static bool is_valid_vaddr (const void *vaddr, bool write);
 static bool is_valid_vrange (const void *vaddr, unsigned size, bool write);
 static bool is_valid_word (const void *vaddr, bool write);
@@ -124,6 +127,19 @@ syscall_handler (struct intr_frame *f)
           syscall_exit(-1);        
         syscall_close(*(int *)(f->esp + 4));
         break;
+#ifdef VM        
+      case SYS_MMAP:
+        if (!is_valid_word(f->esp + 4, false) || 
+            !is_valid_word(f->esp + 8, false)) 
+          syscall_exit(-1);        
+        f->eax = syscall_mmap(*(int *)(f->esp + 4), *(void **)(f->esp + 8));
+        break;
+      case SYS_MUNMAP:
+        if (!is_valid_word(f->esp + 4, false))
+          syscall_exit(-1);        
+        syscall_munmap(*(int *)(f->esp + 4));
+        break;
+#endif
       default:
         syscall_exit(-1);
     }
@@ -288,6 +304,29 @@ syscall_close (int fd)
   if (f == NULL) 
     syscall_exit(-1);
   process_close_file(fd);
+}
+
+static int
+syscall_mmap (int fd, void *addr)
+{
+  if (addr == NULL || pg_ofs(addr) != 0) 
+    return -1;
+
+  struct file *f = process_get_file(fd);
+  if (f == NULL) return -1;
+
+  lock_acquire (&fs_lock);
+  f = file_reopen(f);
+  lock_release (&fs_lock);
+  if (f == NULL) return -1;
+
+  return process_add_mmap(f, addr);
+}
+
+static
+void syscall_munmap (int mapid)
+{
+  process_remove_mmap(mapid);
 }
 
 

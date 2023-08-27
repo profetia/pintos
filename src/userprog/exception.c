@@ -164,7 +164,9 @@ page_fault (struct intr_frame *f)
     } 
   else 
     {
-      success = page_pull(f->esp, fault_addr, write);
+      success = page_pull(
+          &thread_current()->sup_page_table, f->esp,
+          fault_addr, write) != NULL;
     }
 
   if (success) return;

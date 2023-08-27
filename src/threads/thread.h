@@ -137,6 +137,8 @@ struct thread
 
 #ifdef VM
     struct hash sup_page_table;         /* Supplemental page table. */
+    struct list mmap_list;              /* List of mmap files. */
+    int next_mapid;                     /* Next mapid. */
 #endif
 
     /* Owned by thread.c. */

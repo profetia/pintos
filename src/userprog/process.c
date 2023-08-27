@@ -218,6 +218,8 @@ start_process (void *init_args_)
 
 #ifdef VM
   sup_page_table_init (&thread_current()->sup_page_table);
+  list_init (&thread_current()->mmap_list);
+  thread_current()->next_mapid = 0;
 #endif  
 
   /* Initialize interrupt frame and load executable. */
@@ -465,6 +467,75 @@ process_close_file (int fd)
   free (fe);
 }
 
+static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
+                          uint32_t read_bytes, uint32_t zero_bytes,
+                          bool writable);
+
+int
+process_add_mmap (struct file *f, void *addr)
+{
+  off_t size = file_length(f);
+  if (size == 0) return -1;
+
+  if (page_overlaps(&thread_current()->sup_page_table, addr, size)) 
+    return -1;
+  
+  struct mmap_file *me = malloc(sizeof(struct mmap_file));
+  if (me == NULL) return -1;
+
+  size_t read_bytes = size;
+  size_t zero_bytes = (PGSIZE - (size % PGSIZE)) % PGSIZE;
+  if (!load_segment(f, 0, addr, read_bytes, zero_bytes, true)) 
+    {
+      free(me);
+      return -1;
+    }
+
+  me->file = f;
+  me->mapid = thread_current()->next_mapid;
+  me->user_addr = addr;
+  me->num_pages = (read_bytes + zero_bytes) / PGSIZE;
+  thread_current()->next_mapid++;
+  list_push_back(&thread_current()->mmap_list, &me->elem);
+  return me->mapid;
+}
+
+static bool
+process_mmap_pred (const struct list_elem *e, void *aux)
+{
+  struct mmap_file *me = list_entry(e, struct mmap_file, elem);
+  return me->mapid == *(int*)aux;
+}
+
+struct mmap_file *
+process_get_mmap (int mapid)
+{
+  struct list_elem *e = list_find_if(&thread_current()->mmap_list, 
+      process_mmap_pred, &mapid);
+  if (e == NULL) return NULL;
+
+  struct mmap_file *me = list_entry(e, struct mmap_file, elem);
+  return me;
+}
+
+void
+process_remove_mmap (int mapid)
+{
+  struct mmap_file *me = process_get_mmap(mapid);
+  if (me == NULL) return;
+
+  for (int i = 0; i < me->num_pages; ++i)
+    {
+      struct sup_page_table_entry *entry = page_find(
+          &thread_current()->sup_page_table, me->user_addr + i * PGSIZE);
+      if (entry == NULL) continue;
+      page_destroy(&thread_current()->sup_page_table, entry);
+    }
+  
+  list_remove(&me->elem);
+  free(me);
+}
+
 /* We load ELF binaries.  The following definitions are taken
    from the ELF specification, [ELF1], more-or-less verbatim.  */
 
@@ -530,9 +601,6 @@ struct Elf32_Phdr
 
 static bool setup_stack (void **esp, struct list* arg_list);
 static bool validate_segment (const struct Elf32_Phdr *, struct file *);
-static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
-                          uint32_t read_bytes, uint32_t zero_bytes,
-                          bool writable);
 
 static bool setup_args (void **esp, struct list* arg_list);                        
 
@@ -731,7 +799,9 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   ASSERT (pg_ofs (upage) == 0);
   ASSERT (ofs % PGSIZE == 0);
 
+#ifndef VM
   file_seek (file, ofs);
+#endif
   while (read_bytes > 0 || zero_bytes > 0) 
     {
       /* Calculate how to fill this page.
@@ -741,17 +811,13 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
 #ifdef VM
-      struct sup_page_table_entry* spte = page_alloc (
-          &thread_current ()->sup_page_table, upage, writable);
+      struct sup_page_table_entry* spte = page_create (
+          &thread_current ()->sup_page_table, upage, PAGE_LOC_FILESYS,
+          NULL, BITMAP_ERROR, file, ofs, page_read_bytes, 
+          (off_t)page_zero_bytes, writable);
+      
       if (spte == NULL)
         return false;
-
-      if (file_read (file, spte->frame_entry->frame, (off_t)page_read_bytes) != (int) page_read_bytes)
-        {
-          page_free (&thread_current ()->sup_page_table, spte);
-          return false; 
-        }
-      memset (spte->frame_entry->frame + page_read_bytes, 0, page_zero_bytes);
 #else
       /* Get a page of memory. */
       uint8_t *kpage = palloc_get_page (PAL_USER);
@@ -797,7 +863,7 @@ setup_stack (void **esp, struct list* arg_list)
       success = setup_args (esp, arg_list); 
 
       if (!success)
-        page_free (&thread_current ()->sup_page_table, spte);
+        page_destroy (&thread_current ()->sup_page_table, spte);
     }
 #else
   uint8_t *kpage = palloc_get_page (PAL_USER | PAL_ZERO);
