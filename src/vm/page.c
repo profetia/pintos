@@ -1,6 +1,7 @@
 #include "vm/page.h"
 #include <debug.h>
 #include <string.h>
+#include <tanc.h>
 #include "filesys/file.h"
 #include "threads/interrupt.h"
 #include "threads/malloc.h"
@@ -29,12 +30,22 @@ sup_page_less(const struct hash_elem* a, const struct hash_elem* b,
 
 void 
 sup_page_table_init(struct hash* sup_page_table) {
+  ASSERT(sup_page_table != NULL);
   hash_init(sup_page_table, sup_page_hash, sup_page_less, NULL);
+}
+
+static void
+sup_page_table_destroy_action(struct hash_elem* e, void* aux UNUSED) {
+  struct sup_page_table_entry* entry = hash_entry(
+      e, struct sup_page_table_entry, elem);
+  page_destroy(NULL, entry);
 }
 
 void
 sup_page_table_destroy(struct hash* sup_page_table) {
-  hash_destroy(sup_page_table, NULL);
+  ASSERT(sup_page_table != NULL);
+
+  hash_destroy(sup_page_table, sup_page_table_destroy_action);
 }
 
 struct sup_page_table_entry*
@@ -78,7 +89,6 @@ static void page_unmap (struct sup_page_table_entry *spte);
 void 
 page_destroy(struct hash* sup_page_table, struct sup_page_table_entry* entry)
 {
-  ASSERT(sup_page_table != NULL);
   ASSERT(entry != NULL);
 
   switch (entry->location) {
@@ -102,7 +112,7 @@ page_destroy(struct hash* sup_page_table, struct sup_page_table_entry* entry)
       NOT_REACHED();
   }
 
-  hash_delete(sup_page_table, &entry->elem);
+  if (sup_page_table != NULL) hash_delete(sup_page_table, &entry->elem);
   free(entry);
 }
 

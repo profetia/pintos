@@ -360,6 +360,18 @@ process_exit (void)
   pd = cur->pagedir;
   if (pd != NULL) 
     {
+#ifdef VM
+      struct list_elem* e;
+      while (!list_empty (&cur->mmap_list))
+        {
+          e = list_front (&cur->mmap_list);
+          struct mmap_file* me = list_entry (e, struct mmap_file, elem);
+          process_remove_mmap (me->mapid);
+        }
+
+      sup_page_table_destroy (&cur->sup_page_table);
+#endif      
+
       /* Correct ordering here is crucial.  We must set
          cur->pagedir to NULL before switching page directories,
          so that a timer interrupt can't switch back to the
@@ -393,10 +405,6 @@ process_exit (void)
       file_close (cur->exec_file);
       lock_release (&fs_lock);
     }    
-
-#ifdef VM
-  sup_page_table_destroy (&cur->sup_page_table);
-#endif      
 }
 
 /* Sets up the CPU for running user code in the current

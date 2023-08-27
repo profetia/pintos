@@ -1,6 +1,7 @@
 #include "vm/frame.h"
 #include <debug.h>
 #include <list.h>
+#include <tanc.h>
 #include "threads/malloc.h"
 #include "threads/palloc.h"
 #include "threads/synch.h"
@@ -22,8 +23,8 @@ frame_table_init (void) {
 }
 
 struct frame_table_entry*
-frame_alloc (struct sup_page_table_entry *page_entry, uint32_t* user_vaddr, 
-    bool writable) 
+frame_alloc (struct sup_page_table_entry *page_entry, 
+    uint32_t* user_vaddr, bool writable) 
 {
   ASSERT (page_entry != NULL);
 
