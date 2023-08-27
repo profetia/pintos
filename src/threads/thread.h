@@ -38,6 +38,10 @@ typedef int tid_t;
 #define NICE_MAX 20                     /* Highest nice value. */
 #endif
 
+#ifdef VM
+#define MAPID_ERROR -1                  /* Error value for mapid_t. */
+#endif
+
 /* A kernel thread or user process.
 
    Each thread structure is stored in its own 4 kB page.  The

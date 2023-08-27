@@ -310,15 +310,15 @@ static int
 syscall_mmap (int fd, void *addr)
 {
   if (addr == NULL || pg_ofs(addr) != 0) 
-    return -1;
+    return MAPID_ERROR;
 
   struct file *f = process_get_file(fd);
-  if (f == NULL) return -1;
+  if (f == NULL) return MAPID_ERROR;
 
   lock_acquire (&fs_lock);
   f = file_reopen(f);
   lock_release (&fs_lock);
-  if (f == NULL) return -1;
+  if (f == NULL) return MAPID_ERROR;
 
   return process_add_mmap(f, addr);
 }

@@ -71,9 +71,17 @@ page_create(struct hash* sup_page_table, const void* user_vaddr,
   entry->read_bytes = read_bytes;
   entry->zero_bytes = zero_bytes;
   entry->writable = writable;
+
+  entry->lock = malloc(sizeof(struct lock));
+  if (entry->lock == NULL) {
+    free(entry);
+    return NULL;
+  }
+  lock_init(entry->lock);
   
   struct hash_elem* old_elem = hash_insert(sup_page_table, &entry->elem);
   if (old_elem != NULL) {
+    free(entry->lock);
     free(entry);
     return NULL;
   }
@@ -113,6 +121,7 @@ page_destroy(struct hash* sup_page_table, struct sup_page_table_entry* entry)
   }
 
   if (sup_page_table != NULL) hash_delete(sup_page_table, &entry->elem);
+  free(entry->lock);
   free(entry);
 }
 
@@ -240,13 +249,19 @@ page_zero(struct sup_page_table_entry *spte)
   ASSERT (spte != NULL);
   ASSERT (spte->location == PAGE_LOC_ZERO);
 
+  lock_acquire (spte->lock);
   struct frame_table_entry *fte = frame_alloc(
       spte, spte->user_vaddr, spte->writable);
-  if (fte == NULL) return NULL;
+  if (fte == NULL) 
+    {
+      lock_release (spte->lock);
+      return NULL;
+    }
 
   spte->frame_entry = fte;
   spte->location = PAGE_LOC_MEMORY;
 
+  lock_release (spte->lock);
   return spte;
 }
 
@@ -256,15 +271,21 @@ page_reclaim (struct sup_page_table_entry *spte)
   ASSERT (spte != NULL);
   ASSERT (spte->location == PAGE_LOC_SWAP);
 
+  lock_acquire (spte->lock);
   struct frame_table_entry *fte = frame_alloc(
       spte, spte->user_vaddr, spte->writable);
-  if (fte == NULL) return NULL;
+  if (fte == NULL) 
+    {
+      lock_release (spte->lock);
+      return NULL;
+    }
 
   swap_reclaim((uint8_t*)fte->frame, spte->swap_index);
   spte->frame_entry = fte;
   spte->location = PAGE_LOC_MEMORY;
   spte->swap_index = BITMAP_ERROR;
 
+  lock_release (spte->lock);
   return spte;
 }
 
@@ -275,9 +296,14 @@ page_map (struct sup_page_table_entry *spte)
   ASSERT (spte->location == PAGE_LOC_FILESYS || 
       spte->location == PAGE_LOC_EXEC);
 
+  lock_acquire (spte->lock);
   struct frame_table_entry *fte = frame_alloc(
       spte, spte->user_vaddr, spte->writable);
-  if (fte == NULL) return NULL;
+  if (fte == NULL) 
+    {
+      lock_release (spte->lock);
+      return NULL;
+    }
 
   lock_acquire (&fs_lock);  
   if (file_read_at (spte->file, fte->frame, spte->read_bytes, 
@@ -285,6 +311,7 @@ page_map (struct sup_page_table_entry *spte)
     {
       frame_free (fte);
       lock_release (&fs_lock);
+      lock_release (spte->lock);
       return NULL;
     }
   memset (fte + spte->read_bytes, 0, spte->zero_bytes);
@@ -297,6 +324,7 @@ page_map (struct sup_page_table_entry *spte)
   else
     spte->location = PAGE_LOC_MMAPPED;
 
+  lock_release (spte->lock);
   return spte;
 }
 
@@ -306,6 +334,7 @@ page_unmap (struct sup_page_table_entry *spte)
   ASSERT (spte != NULL);
   ASSERT (spte->location == PAGE_LOC_MMAPPED);
 
+  lock_acquire (spte->lock);
   struct frame_table_entry *fte = spte->frame_entry;
   ASSERT (fte != NULL);
 
@@ -316,4 +345,5 @@ page_unmap (struct sup_page_table_entry *spte)
   frame_free (fte);
   spte->frame_entry = NULL;
   spte->location = PAGE_LOC_FILESYS;
+  lock_release (spte->lock);
 }

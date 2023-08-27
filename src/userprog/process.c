@@ -483,20 +483,20 @@ int
 process_add_mmap (struct file *f, void *addr)
 {
   off_t size = file_length(f);
-  if (size == 0) return -1;
+  if (size == 0) return MAPID_ERROR;
 
   if (page_overlaps(&thread_current()->sup_page_table, addr, size)) 
-    return -1;
+    return MAPID_ERROR;
   
   struct mmap_file *me = malloc(sizeof(struct mmap_file));
-  if (me == NULL) return -1;
+  if (me == NULL) return MAPID_ERROR;
 
   size_t read_bytes = size;
   size_t zero_bytes = (PGSIZE - (size % PGSIZE)) % PGSIZE;
   if (!load_segment(PAGE_LOC_FILESYS, f, 0, addr, read_bytes, zero_bytes, true)) 
     {
       free(me);
-      return -1;
+      return MAPID_ERROR;
     }
 
   me->file = f;
@@ -659,7 +659,7 @@ load (struct list* arg_list, void (**eip) (void), void **esp)
     }
 
   /* Read program headers. */
-  file_ofs = ehdr.e_phoff;
+  file_ofs = (off_t)ehdr.e_phoff;
   for (i = 0; i < ehdr.e_phnum; i++) 
     {
       struct Elf32_Phdr phdr;

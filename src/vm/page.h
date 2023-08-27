@@ -5,6 +5,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "filesys/file.h"
+#include "threads/synch.h"
 #include "vm/frame.h"
 #include "vm/swap.h"
 
@@ -14,7 +15,7 @@ enum page_location {
   PAGE_LOC_ZERO,       // Page is all zeros, no other fields are valid.
   PAGE_LOC_SWAP,       // Page is in swap, swap_index is valid.
   PAGE_LOC_MEMORY,     // Page is in memory, frame_entry is valid.
-  PAGE_LOC_EXEC, // Page is in the executable, file and file_offset are 
+  PAGE_LOC_EXEC,       // Page is in the executable, file and file_offset are 
   // valid. Executable pages cannot be written back to the file system
   // instead they must be evicted to swap.
   PAGE_LOC_FILESYS, // Page is in the file system, file and file_offset are valid.
@@ -36,6 +37,7 @@ struct sup_page_table_entry {
 
   bool writable;
 
+  struct lock* lock;
   struct hash_elem elem;
 };
 

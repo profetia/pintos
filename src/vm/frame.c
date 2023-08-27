@@ -81,6 +81,7 @@ frame_evict (void)
   ASSERT (fte != NULL);
   ASSERT (fte->page_entry != NULL);
 
+  lock_acquire (fte->page_entry->lock);
   if (fte->page_entry->location == PAGE_LOC_MEMORY)
     {
       size_t index = swap_evict ((uint8_t*)fte->frame);
@@ -103,6 +104,7 @@ frame_evict (void)
 
   pagedir_clear_page (fte->owner->pagedir, fte->page_entry->user_vaddr);
   palloc_free_page (fte->frame);
+  lock_release (fte->page_entry->lock);
   free (fte);    
 }
 
