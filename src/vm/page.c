@@ -89,6 +89,7 @@ page_destroy(struct hash* sup_page_table, struct sup_page_table_entry* entry)
       swap_free(entry->swap_index);
       break;
     case PAGE_LOC_FILESYS:
+    case PAGE_LOC_EXEC:
       // Do nothing. The page is not responsible for closing the file.
       break;
     case PAGE_LOC_MEMORY:
@@ -212,6 +213,8 @@ page_pull (struct hash* sup_page_table, const void* esp,
         return spte;
       case PAGE_LOC_SWAP:
         return page_reclaim(spte);
+      case PAGE_LOC_EXEC:
+
       case PAGE_LOC_FILESYS:
         return page_map(spte);
       case PAGE_LOC_MMAPPED:
@@ -259,7 +262,8 @@ static struct sup_page_table_entry*
 page_map (struct sup_page_table_entry *spte) 
 {
   ASSERT (spte != NULL);
-  ASSERT (spte->location == PAGE_LOC_FILESYS);
+  ASSERT (spte->location == PAGE_LOC_FILESYS || 
+      spte->location == PAGE_LOC_EXEC);
 
   struct frame_table_entry *fte = frame_alloc(
       spte, spte->user_vaddr, spte->writable);
@@ -277,7 +281,11 @@ page_map (struct sup_page_table_entry *spte)
   lock_release (&fs_lock);
 
   spte->frame_entry = fte;
-  spte->location = PAGE_LOC_MMAPPED;
+
+  if (spte->location == PAGE_LOC_EXEC) 
+    spte->location = PAGE_LOC_MEMORY;
+  else
+    spte->location = PAGE_LOC_MMAPPED;
 
   return spte;
 }

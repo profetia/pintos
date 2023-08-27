@@ -467,7 +467,7 @@ process_close_file (int fd)
   free (fe);
 }
 
-static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
+static bool load_segment (enum page_location location, struct file *file, off_t ofs, uint8_t *upage,
                           uint32_t read_bytes, uint32_t zero_bytes,
                           bool writable);
 
@@ -485,7 +485,7 @@ process_add_mmap (struct file *f, void *addr)
 
   size_t read_bytes = size;
   size_t zero_bytes = (PGSIZE - (size % PGSIZE)) % PGSIZE;
-  if (!load_segment(f, 0, addr, read_bytes, zero_bytes, true)) 
+  if (!load_segment(PAGE_LOC_FILESYS, f, 0, addr, read_bytes, zero_bytes, true)) 
     {
       free(me);
       return -1;
@@ -699,7 +699,7 @@ load (struct list* arg_list, void (**eip) (void), void **esp)
                   read_bytes = 0;
                   zero_bytes = ROUND_UP (page_offset + phdr.p_memsz, PGSIZE);
                 }
-              if (!load_segment (file, (off_t)file_page, (void *) mem_page,
+              if (!load_segment (PAGE_LOC_EXEC, file, (off_t)file_page, (void *) mem_page,
                                  read_bytes, zero_bytes, writable))
                 goto done;
             }
@@ -792,12 +792,13 @@ validate_segment (const struct Elf32_Phdr *phdr, struct file *file)
    Return true if successful, false if a memory allocation error
    or disk read error occurs. */
 static bool
-load_segment (struct file *file, off_t ofs, uint8_t *upage,
-              uint32_t read_bytes, uint32_t zero_bytes, bool writable) 
+load_segment (enum page_location location, struct file *file, off_t ofs,
+              uint8_t *upage, uint32_t read_bytes, uint32_t zero_bytes, bool writable) 
 {
   ASSERT ((read_bytes + zero_bytes) % PGSIZE == 0);
   ASSERT (pg_ofs (upage) == 0);
   ASSERT (ofs % PGSIZE == 0);
+  ASSERT (location == PAGE_LOC_EXEC || location == PAGE_LOC_FILESYS);
 
 #ifndef VM
   file_seek (file, ofs);
@@ -814,13 +815,14 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       struct sup_page_table_entry* spte = NULL;
       if (page_read_bytes != 0)
         spte = page_create (&thread_current ()->sup_page_table, upage, 
-          PAGE_LOC_FILESYS, NULL, BITMAP_ERROR, file, ofs, 
+          location, NULL, BITMAP_ERROR, file, ofs, 
           (off_t)page_read_bytes, (off_t)page_zero_bytes, writable);
       else
         spte = page_create (&thread_current ()->sup_page_table, upage, 
           PAGE_LOC_ZERO, NULL, BITMAP_ERROR, NULL, 0, 0, 0, writable);
 
       if (spte == NULL) return false;
+      ofs += (off_t)page_read_bytes;
 #else
       /* Get a page of memory. */
       uint8_t *kpage = palloc_get_page (PAL_USER);

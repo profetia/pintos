@@ -11,10 +11,13 @@
 #define STACK_BOTTOM ((void*) 0x08048000)
 
 enum page_location {
-  PAGE_LOC_ZERO,    // Page is all zeros, no other fields are valid.
-  PAGE_LOC_SWAP,    // Page is in swap, swap_index is valid.
-  PAGE_LOC_MEMORY,  // Page is in memory, frame_entry is valid.
-  PAGE_LOC_FILESYS, // Page is in the file system, file is valid.
+  PAGE_LOC_ZERO,       // Page is all zeros, no other fields are valid.
+  PAGE_LOC_SWAP,       // Page is in swap, swap_index is valid.
+  PAGE_LOC_MEMORY,     // Page is in memory, frame_entry is valid.
+  PAGE_LOC_EXEC, // Page is in the executable, file and file_offset are 
+  // valid. Executable pages cannot be written back to the file system
+  // instead they must be evicted to swap.
+  PAGE_LOC_FILESYS, // Page is in the file system, file and file_offset are valid.
   PAGE_LOC_MMAPPED, // Page is in a memory mapped file, frame_entry and file are valid.
   PAGE_LOC_ERROR
 };

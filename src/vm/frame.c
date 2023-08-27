@@ -78,15 +78,31 @@ frame_evict (void)
 {
   struct frame_table_entry *fte = frame_find_victim ();
   ASSERT (fte != NULL);
+  ASSERT (fte->page_entry != NULL);
 
-  size_t index = swap_evict ((uint8_t*)fte->frame);
-  fte->page_entry->location = PAGE_LOC_SWAP;
-  fte->page_entry->swap_index = index;
-  fte->page_entry->frame_entry = NULL;
+  if (fte->page_entry->location == PAGE_LOC_MEMORY)
+    {
+      size_t index = swap_evict ((uint8_t*)fte->frame);
+      fte->page_entry->location = PAGE_LOC_SWAP;
+      fte->page_entry->swap_index = index;
+      fte->page_entry->frame_entry = NULL;
+    }
+  else if (fte->page_entry->location == PAGE_LOC_MMAPPED)
+    {
+      lock_acquire (&fs_lock);
+      file_write_at (fte->page_entry->file, fte->frame, 
+          fte->page_entry->read_bytes, fte->page_entry->file_offset);
+      lock_release (&fs_lock);
+
+      fte->page_entry->location = PAGE_LOC_FILESYS;  
+      fte->page_entry->frame_entry = NULL;    
+    }
+  else
+    NOT_REACHED ();
 
   pagedir_clear_page (fte->owner->pagedir, fte->page_entry->user_vaddr);
   palloc_free_page (fte->frame);
-  free (fte);
+  free (fte);    
 }
 
 static struct frame_table_entry*
