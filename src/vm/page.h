@@ -11,6 +11,7 @@
 #define STACK_BOTTOM ((void*) 0x08048000)
 
 enum page_location {
+  PAGE_LOC_ZERO,    // Page is all zeros, no other fields are valid.
   PAGE_LOC_SWAP,    // Page is in swap, swap_index is valid.
   PAGE_LOC_MEMORY,  // Page is in memory, frame_entry is valid.
   PAGE_LOC_FILESYS, // Page is in the file system, file is valid.

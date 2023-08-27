@@ -524,7 +524,7 @@ process_remove_mmap (int mapid)
   struct mmap_file *me = process_get_mmap(mapid);
   if (me == NULL) return;
 
-  for (int i = 0; i < me->num_pages; ++i)
+  for (size_t i = 0; i < me->num_pages; ++i)
     {
       struct sup_page_table_entry *entry = page_find(
           &thread_current()->sup_page_table, me->user_addr + i * PGSIZE);
@@ -811,13 +811,16 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
 #ifdef VM
-      struct sup_page_table_entry* spte = page_create (
-          &thread_current ()->sup_page_table, upage, PAGE_LOC_FILESYS,
-          NULL, BITMAP_ERROR, file, ofs, page_read_bytes, 
-          (off_t)page_zero_bytes, writable);
-      
-      if (spte == NULL)
-        return false;
+      struct sup_page_table_entry* spte = NULL;
+      if (page_read_bytes != 0)
+        spte = page_create (&thread_current ()->sup_page_table, upage, 
+          PAGE_LOC_FILESYS, NULL, BITMAP_ERROR, file, ofs, 
+          (off_t)page_read_bytes, (off_t)page_zero_bytes, writable);
+      else
+        spte = page_create (&thread_current ()->sup_page_table, upage, 
+          PAGE_LOC_ZERO, NULL, BITMAP_ERROR, NULL, 0, 0, 0, writable);
+
+      if (spte == NULL) return false;
 #else
       /* Get a page of memory. */
       uint8_t *kpage = palloc_get_page (PAL_USER);

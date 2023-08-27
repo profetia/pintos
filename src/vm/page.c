@@ -70,6 +70,7 @@ page_create(struct hash* sup_page_table, const void* user_vaddr,
   return entry;
 }
 
+static struct sup_page_table_entry* page_zero(struct sup_page_table_entry *spte);
 static struct sup_page_table_entry* page_reclaim (struct sup_page_table_entry *spte);
 static struct sup_page_table_entry* page_map (struct sup_page_table_entry *spte);
 static void page_unmap (struct sup_page_table_entry *spte);
@@ -81,6 +82,9 @@ page_destroy(struct hash* sup_page_table, struct sup_page_table_entry* entry)
   ASSERT(entry != NULL);
 
   switch (entry->location) {
+    case PAGE_LOC_ZERO:
+      // Do nothing. The page is all zeros.
+      break;
     case PAGE_LOC_SWAP:
       swap_free(entry->swap_index);
       break;
@@ -202,6 +206,8 @@ page_pull (struct hash* sup_page_table, const void* esp,
 
   switch (spte->location)
     {
+      case PAGE_LOC_ZERO:
+        return page_zero(spte);
       case PAGE_LOC_MEMORY:
         return spte;
       case PAGE_LOC_SWAP:
@@ -213,6 +219,22 @@ page_pull (struct hash* sup_page_table, const void* esp,
       default:
         return NULL;        
     }       
+}
+
+static struct sup_page_table_entry*
+page_zero(struct sup_page_table_entry *spte) 
+{
+  ASSERT (spte != NULL);
+  ASSERT (spte->location == PAGE_LOC_ZERO);
+
+  struct frame_table_entry *fte = frame_alloc(
+      spte, spte->user_vaddr, spte->writable);
+  if (fte == NULL) return NULL;
+
+  spte->frame_entry = fte;
+  spte->location = PAGE_LOC_MEMORY;
+
+  return spte;
 }
 
 static struct sup_page_table_entry*
@@ -243,9 +265,9 @@ page_map (struct sup_page_table_entry *spte)
       spte, spte->user_vaddr, spte->writable);
   if (fte == NULL) return NULL;
 
-  lock_acquire (&fs_lock);
-  file_seek(spte->file, spte->file_offset);
-  if (file_read (spte->file, fte, spte->read_bytes) != (int)spte->read_bytes)
+  lock_acquire (&fs_lock);  
+  if (file_read_at (spte->file, fte->frame, spte->read_bytes, 
+      spte->file_offset) != (int)spte->read_bytes)
     {
       frame_free (fte);
       lock_release (&fs_lock);
