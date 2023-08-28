@@ -80,6 +80,7 @@ frame_evict (void)
   struct frame_table_entry *fte = frame_find_victim ();
   ASSERT (fte != NULL);
   ASSERT (fte->page_entry != NULL);
+  ASSERT (fte->page_entry->location == PAGE_LOC_MEMORY);
 
   lock_acquire (fte->page_entry->lock);
   if (fte->page_entry->location == PAGE_LOC_MEMORY)

@@ -493,7 +493,8 @@ process_add_mmap (struct file *f, void *addr)
 
   size_t read_bytes = size;
   size_t zero_bytes = (PGSIZE - (size % PGSIZE)) % PGSIZE;
-  if (!load_segment(PAGE_LOC_FILESYS, f, 0, addr, read_bytes, zero_bytes, true)) 
+  if (!load_segment(PAGE_LOC_FILESYS, f, 0, addr, 
+      read_bytes, zero_bytes, true)) 
     {
       free(me);
       return MAPID_ERROR;
@@ -824,7 +825,7 @@ load_segment (enum page_location location, struct file *file, off_t ofs,
       if (page_read_bytes != 0)
         spte = page_create (&thread_current ()->sup_page_table, upage, 
           location, NULL, BITMAP_ERROR, file, ofs, 
-          (off_t)page_read_bytes, (off_t)page_zero_bytes, writable);
+          page_read_bytes, page_zero_bytes, writable);
       else
         spte = page_create (&thread_current ()->sup_page_table, upage, 
           PAGE_LOC_ZERO, NULL, BITMAP_ERROR, NULL, 0, 0, 0, writable);

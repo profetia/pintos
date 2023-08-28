@@ -32,8 +32,8 @@ struct sup_page_table_entry {
   size_t swap_index;
   struct file* file;
   off_t file_offset;
-  off_t read_bytes;
-  off_t zero_bytes;
+  size_t read_bytes;
+  size_t zero_bytes;
 
   bool writable;
 
@@ -48,7 +48,7 @@ struct sup_page_table_entry* page_create(
     struct hash* sup_page_table, const void* user_vaddr, 
     enum page_location location, struct frame_table_entry* frame_entry, 
     size_t swap_index, struct file* file, off_t file_offset, 
-    off_t read_bytes, off_t zero_bytes, bool writable);
+    size_t read_bytes, size_t zero_bytes, bool writable);
 void page_destroy(struct hash* sup_page_table, 
     struct sup_page_table_entry* entry);
 
@@ -56,10 +56,9 @@ struct sup_page_table_entry* page_alloc(
     struct hash* sup_page_table, const void* user_vaddr, bool writable);
 
 struct sup_page_table_entry *page_mmap (struct hash *sup_page_table,
-                                        struct file *file, off_t offset,
-                                        const uint32_t *user_vaddr,
-                                        uint32_t read_bytes,
-                                        uint32_t zero_bytes, bool writable);
+                                        struct file *file, const uint32_t *user_vaddr,
+                                        off_t offset, size_t read_bytes,
+                                        size_t zero_bytes, bool writable);
 
 struct sup_page_table_entry* page_find(
     struct hash* sup_page_table, const void* user_vaddr);

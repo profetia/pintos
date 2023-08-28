@@ -52,7 +52,7 @@ struct sup_page_table_entry*
 page_create(struct hash* sup_page_table, const void* user_vaddr, 
     enum page_location location, struct frame_table_entry* frame_entry, 
     size_t swap_index, struct file* file, off_t file_offset, 
-    off_t read_bytes, off_t zero_bytes, bool writable) 
+    size_t read_bytes, size_t zero_bytes, bool writable) 
 {
   ASSERT(user_vaddr != NULL);
 
@@ -138,24 +138,28 @@ page_alloc(struct hash* sup_page_table, const void* user_vaddr, bool writable)
     return NULL;
   }
 
+  lock_acquire(entry->lock);
   entry->frame_entry = frame_alloc(entry, pg_round_down(user_vaddr), writable);
   if (entry->frame_entry == NULL) {
+    lock_release(entry->lock);
     free(entry);
     return NULL;
   }
 
+  lock_release(entry->lock);
   return entry;
 }
 
 struct sup_page_table_entry *
-page_mmap (struct hash *sup_page_table, struct file *file, off_t offset,
-           const uint32_t *user_vaddr, uint32_t read_bytes,
-           uint32_t zero_bytes, bool writable)
+page_mmap (struct hash *sup_page_table, struct file *file, 
+           const uint32_t *user_vaddr, off_t offset, size_t read_bytes,
+           size_t zero_bytes, bool writable)
 {
   ASSERT (sup_page_table != NULL);
   ASSERT (file != NULL);
   ASSERT (user_vaddr != NULL);
   ASSERT (read_bytes + zero_bytes > 0);
+  ASSERT (read_bytes + zero_bytes <= PGSIZE);
 
   struct sup_page_table_entry *spte = page_create(
       sup_page_table, user_vaddr, PAGE_LOC_FILESYS, NULL, BITMAP_ERROR, 
@@ -233,7 +237,6 @@ page_pull (struct hash* sup_page_table, const void* esp,
       case PAGE_LOC_SWAP:
         return page_reclaim(spte);
       case PAGE_LOC_EXEC:
-
       case PAGE_LOC_FILESYS:
         return page_map(spte);
       case PAGE_LOC_MMAPPED:
@@ -306,7 +309,7 @@ page_map (struct sup_page_table_entry *spte)
     }
 
   lock_acquire (&fs_lock);  
-  if (file_read_at (spte->file, fte->frame, spte->read_bytes, 
+  if (file_read_at (spte->file, fte->frame, (off_t)spte->read_bytes, 
       spte->file_offset) != (int)spte->read_bytes)
     {
       frame_free (fte);
@@ -314,7 +317,7 @@ page_map (struct sup_page_table_entry *spte)
       lock_release (spte->lock);
       return NULL;
     }
-  memset (fte + spte->read_bytes, 0, spte->zero_bytes);
+  memset (fte->frame + spte->read_bytes, 0, spte->zero_bytes);
   lock_release (&fs_lock);
 
   spte->frame_entry = fte;
@@ -339,7 +342,7 @@ page_unmap (struct sup_page_table_entry *spte)
   ASSERT (fte != NULL);
 
   lock_acquire (&fs_lock);
-  file_write_at (spte->file, fte->frame, spte->read_bytes, spte->file_offset);
+  file_write_at (spte->file, fte->frame, (off_t)spte->read_bytes, spte->file_offset);
   lock_release (&fs_lock);
 
   frame_free (fte);
