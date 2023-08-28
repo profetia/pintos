@@ -170,22 +170,56 @@ We chose a hash table to represent the virtual-to-physical mappings because it i
 > `struct' member, global or static variable, `typedef', or
 > enumeration.  Identify the purpose of each in 25 words or less.
 
+```c
+// vm/page.h
+
+...
+
+struct sup_page_table_entry {
+  ...
+  size_t swap_index;
+  ...
+};
+
+...
+
+// vm/swap.h
+
+...
+
+static struct block *swap_block;
+static struct bitmap *swap_bitmap;
+static struct lock swap_lock;
+
+...
+
+```
+
+- In `struct sup_page_table_entry`:
+    - `swap_index`: The swap index of the page.
+
+- `struct block *swap_block`: The swap block.
+- `struct bitmap *swap_bitmap`: The swap bitmap.
+- `struct lock swap_lock`: The lock of the swap.
 
 #### ALGORITHMS 
 
 > B2: When a frame is required but none is free, some frame must be
 > evicted.  Describe your code for choosing a frame to evict.
 
+The frame table is iterated through to find a frame to evict. The frame is chosen by the clock algorithm. If the frame is accessed, the accessed bit is cleared. Otherwise, the frame is evicted. When no frame is found, the evict victim fallback to the front of the frame table.
 
 > B3: When a process P obtains a frame that was previously used by a
 > process Q, how do you adjust the page table (and any other data
 > structures) to reflect the frame Q no longer has?
 
+When process Q no longer possesses a frame, the frame is freed with `frame_free()`. The `location` field in the corresponding SPT entry is set to Q's new location and the `frame_entry` field is set to NULL.
 
 > B4: Explain your heuristic for deciding whether a page fault for an
 > invalid virtual address should cause the stack to be extended into
 > the page that faulted.
 
+If the fault address is below PHYS_BASE and above the `STACK_BOTTOM` which is 0x08048000, and it is above `esp - 32`, the stack is extended into the page that faulted.
 
 #### SYNCHRONIZATION 
 
@@ -194,21 +228,21 @@ We chose a hash table to represent the virtual-to-physical mappings because it i
 > textbook for an explanation of the necessary conditions for
 > deadlock.)
 
-
+The VM synchronization design uses a lock for each SPT entry. Whenever any operation is performed on a SPT entry, the corresponding lock is acquired. In these operations, the process may at most wait for the lock of the global frame table lock or the lock of the swap, which does not wait for any other locks. Since there is no `wait while holding` in the global frame table lock or the lock of the swap, there is no possibility of deadlock.
 
 > B6: A page fault in process P can cause another process Q's frame
 > to be evicted.  How do you ensure that Q cannot access or modify
 > the page during the eviction process?  How do you avoid a race
 > between P evicting Q's frame and Q faulting the page back in?
 
-
+When a page fault in process P causes another process Q's frame to be evicted, the lock in the corresponding SPT entry is acquired. Q's frame cannot be evicted until the lock is released, signaling the completion of Q's page fault handling. When Q faults the page back in, the lock is acquired again. Q cannot access or modify the page during the eviction process because the lock is held by P.
 
 > B7: Suppose a page fault in process P causes a page to be read from
 > the file system or swap.  How do you ensure that a second process Q
 > cannot interfere by e.g. attempting to evict the frame while it is
 > still being read in?
 
-
+Similar to B6, when a page fault in process P causes a page to be read from the file system or swap, the lock in the corresponding SPT entry is acquired. Q cannot interfere by attempting to evict the frame while it is still being read in because the lock is held by P.
 
 > B8: Explain how you handle access to paged-out pages that occur
 > during system calls.  Do you use page faults to bring in pages (as
@@ -216,7 +250,7 @@ We chose a hash table to represent the virtual-to-physical mappings because it i
 > into physical memory, or do you use some other design?  How do you
 > gracefully handle attempted accesses to invalid virtual addresses?
 
-
+When a page fault occurs during system calls, the page is brought in by the page fault handler. We do not use a mechanism for "locking" frames into physical memory. If the virtual address is not in the SPT, the process is terminated. 
 
 #### RATIONALE 
 
