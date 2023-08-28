@@ -37,6 +37,8 @@ struct sup_page_table_entry {
 
   bool writable;
 
+  bool dirty;
+
   struct lock* lock;
   struct hash_elem elem;
 };
@@ -68,5 +70,9 @@ bool page_overlaps(struct hash* sup_page_table,
 
 struct sup_page_table_entry* page_pull (struct hash* sup_page_table, 
     const void* esp, const void* user_addr, bool write);
+
+void page_unmap(struct sup_page_table_entry* spte);
+
+void page_evict(struct sup_page_table_entry* spte);
 
 #endif

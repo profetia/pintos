@@ -79,6 +79,7 @@ page_create(struct hash* sup_page_table, const void* user_vaddr,
     return NULL;
   }
   
+  entry->dirty = false;
   lock_init(entry->lock);
   
   struct hash_elem* old_elem = hash_insert(sup_page_table, &entry->elem);
@@ -94,7 +95,6 @@ page_create(struct hash* sup_page_table, const void* user_vaddr,
 static struct sup_page_table_entry* page_zero(struct sup_page_table_entry *spte);
 static struct sup_page_table_entry* page_reclaim (struct sup_page_table_entry *spte);
 static struct sup_page_table_entry* page_map (struct sup_page_table_entry *spte);
-static void page_unmap (struct sup_page_table_entry *spte);
 
 void 
 page_destroy(struct hash* sup_page_table, struct sup_page_table_entry* entry)
@@ -225,10 +225,14 @@ page_pull (struct hash* sup_page_table, const void* esp,
     {
       if (!is_stack_vaddr(esp, user_addr)) return false;        
       spte = page_alloc(sup_page_table, user_addr, true);
+      if (spte == NULL) return NULL;
+      spte->dirty = write;
       return spte;
     }
 
   if (write && !spte->writable) return NULL;
+
+  spte->dirty = spte->dirty || write;
 
   switch (spte->location)
     {
@@ -333,7 +337,7 @@ page_map (struct sup_page_table_entry *spte)
   return spte;
 }
 
-static void 
+void 
 page_unmap (struct sup_page_table_entry *spte)
 {
   ASSERT (spte != NULL);
@@ -343,8 +347,8 @@ page_unmap (struct sup_page_table_entry *spte)
   struct frame_table_entry *fte = spte->frame_entry;
   ASSERT (fte != NULL);
 
-  if (spte->writable && pagedir_is_dirty (
-      fte->owner->pagedir, spte->user_vaddr))
+  if (spte->writable && (pagedir_is_dirty (
+      fte->owner->pagedir, spte->user_vaddr) || spte->dirty))
     {
       lock_acquire (&fs_lock);
       file_write_at (spte->file, fte->frame, (off_t)spte->read_bytes, spte->file_offset);
@@ -354,5 +358,23 @@ page_unmap (struct sup_page_table_entry *spte)
   frame_free (fte);
   spte->frame_entry = NULL;
   spte->location = PAGE_LOC_FILESYS;
+  lock_release (spte->lock);
+}
+
+void 
+page_evict(struct sup_page_table_entry* spte)
+{
+  ASSERT (spte != NULL);
+  ASSERT (spte->location == PAGE_LOC_MEMORY);
+
+  lock_acquire (spte->lock);
+  struct frame_table_entry *fte = spte->frame_entry;
+  ASSERT (fte != NULL);
+
+  spte->swap_index = swap_evict ((uint8_t*)fte->frame);
+
+  frame_free (fte);
+  spte->location = PAGE_LOC_SWAP;
+  spte->frame_entry = NULL;
   lock_release (spte->lock);
 }
