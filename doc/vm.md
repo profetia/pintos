@@ -272,14 +272,60 @@ Our design falls along the continuum of using many locks. We chose to design it 
 > `struct' member, global or static variable, `typedef', or
 > enumeration.  Identify the purpose of each in 25 words or less.
 
+```c
+// threads/thread.h
+
+...
+
+struct thread
+  {
+    ...
+    struct list mmap_list;              /* List of mmap files. */
+    int next_mapid;                     /* Next mapid. */
+    ...
+  }
+
+...
+
+// vm/page.h
+
+...
+
+struct sup_page_table_entry {
+  ...
+  struct file* file;
+  off_t file_offset;
+  size_t read_bytes;
+  size_t zero_bytes;
+  ...
+};
+
+...
+
+```
+
+- In `struct thread`:
+    - `mmap_list`: A list that stores the memory mapped files of the thread.
+    - `next_mapid`: The next mapid of the thread.
+
+- In `struct sup_page_table_entry`:
+    - `file`: The file of the page.
+    - `file_offset`: The file offset of the page.
+    - `read_bytes`: The number of bytes to read from the file.
+    - `zero_bytes`: The number of bytes to zero after the file.
+
 #### ALGORITHMS 
 
 > C2: Describe how memory mapped files integrate into your virtual
 > memory subsystem.  Explain how the page fault and eviction
 > processes differ between swap pages and other pages.
 
+Memory mapped files integrate into our virtual memory subsystem by adding a new location `PAGE_LOC_MMAPPED` to the `enum page_location`. When a page fault occurs, the page is brought in by the page fault handler. When a page is evicted, the page is written back to the file system if it is dirty. The eviction process differs between swap pages and other pages in that swap pages are written back to the swap instead of the file system.
+
 > C3: Explain how you determine whether a new file mapping overlaps
 > any existing segment.
+
+In our implementation, we do not allow a new file mapping to overlap any existing segment. When creating a new file mapping, the file is checked for overlapping by iterating through the virtual address space of the process by `PGSIZE` bytes. If any part of the file overlaps with an existing segment, the file mapping is not created.
 
 #### RATIONALE 
 
@@ -289,6 +335,8 @@ Our design falls along the continuum of using many locks. We chose to design it 
 > that much of their implementation can be shared.  Explain why your
 > implementation either does or does not share much of the code for
 > the two situations.
+
+Our implementation shares much of the code for the two situations. The page fault handler for memory mapped files is similar to that for executables. The eviction process for memory mapped files is similar to that for executables. The only difference is that the location of the page is set to `PAGE_LOC_MMAPPED` instead of `PAGE_LOC_MEMORY`.
 
                SURVEY QUESTIONS
                ================
