@@ -475,10 +475,14 @@ process_close_file (int fd)
   free (fe);
 }
 
-static bool load_segment (enum page_location location, struct file *file, off_t ofs, uint8_t *upage,
-                          uint32_t read_bytes, uint32_t zero_bytes,
-                          bool writable);
+static bool load_segment (
+#ifdef VM
+    enum page_location location, 
+#endif
+    struct file *file, off_t ofs, uint8_t *upage, uint32_t read_bytes, 
+    uint32_t zero_bytes, bool writable);
 
+#ifdef VM
 int
 process_add_mmap (struct file *f, void *addr)
 {
@@ -544,6 +548,7 @@ process_remove_mmap (int mapid)
   list_remove(&me->elem);
   free(me);
 }
+#endif
 
 /* We load ELF binaries.  The following definitions are taken
    from the ELF specification, [ELF1], more-or-less verbatim.  */
@@ -708,8 +713,12 @@ load (struct list* arg_list, void (**eip) (void), void **esp)
                   read_bytes = 0;
                   zero_bytes = ROUND_UP (page_offset + phdr.p_memsz, PGSIZE);
                 }
-              if (!load_segment (PAGE_LOC_EXEC, file, (off_t)file_page, (void *) mem_page,
-                                 read_bytes, zero_bytes, writable))
+              if (!load_segment (
+#ifdef VM                
+                    PAGE_LOC_EXEC, 
+#endif                    
+                    file, (off_t)file_page, (void *) mem_page,
+                    read_bytes, zero_bytes, writable))
                 goto done;
             }
           else
@@ -801,13 +810,20 @@ validate_segment (const struct Elf32_Phdr *phdr, struct file *file)
    Return true if successful, false if a memory allocation error
    or disk read error occurs. */
 static bool
-load_segment (enum page_location location, struct file *file, off_t ofs,
-              uint8_t *upage, uint32_t read_bytes, uint32_t zero_bytes, bool writable) 
+load_segment (
+#ifdef VM
+    enum page_location location, 
+#endif
+    struct file *file, off_t ofs, uint8_t *upage, 
+    uint32_t read_bytes, uint32_t zero_bytes, bool writable) 
 {
   ASSERT ((read_bytes + zero_bytes) % PGSIZE == 0);
   ASSERT (pg_ofs (upage) == 0);
   ASSERT (ofs % PGSIZE == 0);
+
+#ifdef VM
   ASSERT (location == PAGE_LOC_EXEC || location == PAGE_LOC_FILESYS);
+#endif
 
 #ifndef VM
   file_seek (file, ofs);

@@ -31,8 +31,10 @@ static void syscall_seek (int fd, unsigned position);
 static unsigned syscall_tell (int fd);
 static void syscall_close (int fd);
 
+#ifdef VM
 static int syscall_mmap (int fd, void *addr);
 static void syscall_munmap (int mapid);
+#endif
 
 static bool is_valid_vaddr (const void *vaddr, bool write);
 static bool is_valid_vrange (const void *vaddr, unsigned size, bool write);
@@ -306,6 +308,7 @@ syscall_close (int fd)
   process_close_file(fd);
 }
 
+#ifdef VM
 static int
 syscall_mmap (int fd, void *addr)
 {
@@ -328,7 +331,7 @@ void syscall_munmap (int mapid)
 {
   process_remove_mmap(mapid);
 }
-
+#endif
 
 /* Returns true if the given virtual address is valid,
    which is to say that it is not NULL, it is in user
