@@ -38,6 +38,7 @@ struct sup_page_table_entry {
   bool writable;
 
   bool dirty;
+  bool accessed;
 
   struct lock* lock;
   struct hash_elem elem;

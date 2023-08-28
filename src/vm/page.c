@@ -80,6 +80,7 @@ page_create(struct hash* sup_page_table, const void* user_vaddr,
   }
   
   entry->dirty = false;
+  entry->accessed = false;
   lock_init(entry->lock);
   
   struct hash_elem* old_elem = hash_insert(sup_page_table, &entry->elem);
@@ -149,6 +150,7 @@ page_alloc(struct hash* sup_page_table, const void* user_vaddr, bool writable)
   }
 
   entry->dirty = writable;
+  entry->accessed = true;
 
   lock_release(entry->lock);
   return entry;
@@ -233,6 +235,7 @@ page_pull (struct hash* sup_page_table, const void* esp,
   if (write && !spte->writable) return NULL;
 
   spte->dirty = spte->dirty || write;
+  spte->accessed = true;
 
   switch (spte->location)
     {
@@ -358,6 +361,7 @@ page_unmap (struct sup_page_table_entry *spte)
   frame_free (fte);
   spte->frame_entry = NULL;
   spte->location = PAGE_LOC_FILESYS;
+  spte->accessed = false;
   lock_release (spte->lock);
 }
 
@@ -376,5 +380,6 @@ page_evict(struct sup_page_table_entry* spte)
   frame_free (fte);
   spte->location = PAGE_LOC_SWAP;
   spte->frame_entry = NULL;
+  spte->accessed = false;
   lock_release (spte->lock);
 }
