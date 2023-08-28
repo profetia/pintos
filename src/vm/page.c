@@ -148,6 +148,8 @@ page_alloc(struct hash* sup_page_table, const void* user_vaddr, bool writable)
     return NULL;
   }
 
+  entry->dirty = writable;
+
   lock_release(entry->lock);
   return entry;
 }
@@ -225,8 +227,6 @@ page_pull (struct hash* sup_page_table, const void* esp,
     {
       if (!is_stack_vaddr(esp, user_addr)) return false;        
       spte = page_alloc(sup_page_table, user_addr, true);
-      if (spte == NULL) return NULL;
-      spte->dirty = write;
       return spte;
     }
 

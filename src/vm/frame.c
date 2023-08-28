@@ -99,6 +99,19 @@ frame_find_victim (void)
   struct frame_table_entry *fte;
 
   lock_acquire (&frame_table_lock);
+  // The clock algorithm: https://web.stanford.edu/class/archive/cs/cs111/cs111.1232/lectures/25/Lecture25.pdf
+  for (e = list_begin (&frame_table); e != list_end (&frame_table); 
+      e = list_next (e)) 
+    {
+      fte = list_entry (e, struct frame_table_entry, elem);
+      if (!pagedir_is_accessed (fte->owner->pagedir, fte->page_entry->user_vaddr)) 
+        {
+          lock_release (&frame_table_lock);
+          return fte;
+        }
+      pagedir_set_accessed (fte->owner->pagedir, fte->page_entry->user_vaddr, false);
+    }
+
   e = list_pop_front (&frame_table);
   fte = list_entry (e, struct frame_table_entry, elem);
   lock_release (&frame_table_lock);
