@@ -7,6 +7,7 @@
 #include "threads/malloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include "userprog/pagedir.h"
 #include "userprog/process.h"
 
 static unsigned 
@@ -77,6 +78,7 @@ page_create(struct hash* sup_page_table, const void* user_vaddr,
     free(entry);
     return NULL;
   }
+  
   lock_init(entry->lock);
   
   struct hash_elem* old_elem = hash_insert(sup_page_table, &entry->elem);
@@ -341,9 +343,13 @@ page_unmap (struct sup_page_table_entry *spte)
   struct frame_table_entry *fte = spte->frame_entry;
   ASSERT (fte != NULL);
 
-  lock_acquire (&fs_lock);
-  file_write_at (spte->file, fte->frame, (off_t)spte->read_bytes, spte->file_offset);
-  lock_release (&fs_lock);
+  if (spte->writable && pagedir_is_dirty (
+      fte->owner->pagedir, spte->user_vaddr))
+    {
+      lock_acquire (&fs_lock);
+      file_write_at (spte->file, fte->frame, (off_t)spte->read_bytes, spte->file_offset);
+      lock_release (&fs_lock);
+    }
 
   frame_free (fte);
   spte->frame_entry = NULL;

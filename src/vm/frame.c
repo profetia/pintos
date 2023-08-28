@@ -94,7 +94,7 @@ frame_evict (void)
     {
       lock_acquire (&fs_lock);
       file_write_at (fte->page_entry->file, fte->frame, 
-          fte->page_entry->read_bytes, fte->page_entry->file_offset);
+          (off_t)fte->page_entry->read_bytes, fte->page_entry->file_offset);
       lock_release (&fs_lock);
 
       fte->page_entry->location = PAGE_LOC_FILESYS;  
