@@ -19,7 +19,6 @@ static void cache_read_ahead_daemon(void *aux UNUSED);
 
 static struct list write_behind_list;
 static struct lock write_behind_lock;
-static struct condition write_behind_cond;
 static void cache_write_behind_daemon(void *aux UNUSED);
 
 static struct cache_entry* cache_pull(block_sector_t sector);
@@ -47,7 +46,6 @@ cache_init(void)
 
   list_init(&write_behind_list);
   lock_init(&write_behind_lock);
-  cond_init(&write_behind_cond);
   thread_create("cache_write_behind_daemon", PRI_DEFAULT,
       cache_write_behind_daemon, NULL);
 }
@@ -211,26 +209,28 @@ cache_write_behind(bool terminate)
 
   lock_acquire(&write_behind_lock);
   list_push_back(&write_behind_list, &elem->elem);
-  cond_signal(&write_behind_cond, &write_behind_lock);
-
   lock_release(&write_behind_lock);
 }
 
 static void
 cache_write_behind_daemon(void *aux UNUSED) 
 {
-  lock_acquire(&write_behind_lock);
-  while (true) 
+  while (true)
     {
-      while (list_empty(&write_behind_list))
-        cond_wait(&write_behind_cond, &write_behind_lock);
-      struct write_behind_elem* elem = list_entry(list_pop_front(&write_behind_list), struct write_behind_elem, elem);
-      bool terminate = elem->terminate;
-      free(elem);
-      if (terminate)
-        break;      
-      cache_flush();
-    }
+      lock_acquire(&write_behind_lock);
+      if (!list_empty(&write_behind_list))
+        {
+          struct write_behind_elem* elem = list_entry(list_pop_front(&write_behind_list), struct write_behind_elem, elem);
+          bool terminate = elem->terminate;
+          free(elem);
+          if (terminate)
+            break;
+        }
+      lock_release(&write_behind_lock);
 
+      cache_flush();
+      thread_sleep(CACHE_FLUSH_INTERVAL);
+    }
+  
   lock_release(&write_behind_lock);
 }

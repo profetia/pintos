@@ -8,10 +8,6 @@
 #include "threads/interrupt.h"
 #include "threads/synch.h"
 #include "threads/thread.h"
-
-#ifdef FS
-#include "filesys/cache.h"
-#endif
   
 /* See [8254] for hardware details of the 8254 timer chip. */
 
@@ -192,11 +188,6 @@ timer_interrupt (struct intr_frame *args UNUSED)
 #if defined(THREADS) || defined(FS)  
   // wakeup sleeping threads
   thread_wakeup(ticks);
-#endif
-
-#ifdef FS
-  if (ticks % CACHE_FLUSH_INTERVAL == 0)
-    cache_write_behind(false);
 #endif
 
 #ifdef THREADS
