@@ -256,9 +256,11 @@ static bool
 inode_expand (struct inode_disk* inode_disk, block_sector_t sectors)
 {
   ASSERT (inode_disk != NULL);
-  ASSERT (sectors > 0);
   ASSERT (sectors <= NUM_DIRECT_SECTORS + NUM_INDIRECT_SECTORS + 
       NUM_DOUBLE_INDIRECT_SECTORS);
+
+  if (sectors == 0)
+   return true;
 
   for (size_t i = 0; i < NUM_DIRECT_BLOCKS; ++i)
     {
