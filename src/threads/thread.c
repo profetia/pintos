@@ -114,7 +114,7 @@ thread_init (void)
 
   lock_init (&tid_lock);
   list_init (&ready_list);
-#ifdef THREADS
+#if defined(THREADS) || defined(FILESYS)
   list_init (&sleep_list);
 #endif
   list_init (&all_list);
