@@ -93,7 +93,7 @@ timer_sleep (int64_t ticks)
 
   ASSERT (intr_get_level () == INTR_ON);
 
-#ifdef THREADS
+#if defined(THREADS) || defined(FILESYS)  
   // sleep until wakeup by timer_interrupt
   thread_sleep(start + ticks);
 #else
@@ -184,10 +184,12 @@ timer_interrupt (struct intr_frame *args UNUSED)
   ticks++;
   thread_tick ();
 
-#ifdef THREADS
+#if defined(THREADS) || defined(FILESYS)  
   // wakeup sleeping threads
   thread_wakeup(ticks);
+#endif
 
+#ifdef THREADS
   // update recent_cpu
   if (thread_mlfqs) 
     {    

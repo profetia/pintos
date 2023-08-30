@@ -108,10 +108,12 @@ struct thread
     int priority;                       /* Priority. */
     struct list_elem allelem;           /* List element for all threads list. */
 
-#ifdef THREADS
+#if defined(THREADS) || defined(FILESYS)  
     int64_t wakeup_tick;                /* Wakeup tick. */
     struct list_elem sleep_elem;        /* List element for sleep threads list. */
+#endif
 
+#ifdef THREADS
     int init_priority;                  /* Initial priority. */
     struct list donor_list;             /* List of donors. */
     struct list_elem donor_elem;        /* List element for donors list. */
