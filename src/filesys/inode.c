@@ -21,15 +21,12 @@
 #define NUM_BLOCKS ((block_sector_t)(NUM_DIRECT_BLOCKS + \
     NUM_INDIRECT_BLOCKS + NUM_DOUBLE_INDIRECT_BLOCKS))
 
-#define NUM_DIRECT_SECTORS ((block_sector_t)( \
-    NUM_DIRECT_BLOCKS * BLOCK_SECTOR_SIZE))
-#define NUM_INDIRECT_SECTORS ((block_sector_t)( \
-    NUM_INDIRECT_BLOCKS * BLOCK_SECTOR_SIZE * ( \
-        BLOCK_SECTOR_SIZE / (block_sector_t)sizeof (block_sector_t))))
-#define NUM_DOUBLE_INDIRECT_SECTORS ((block_sector_t)( \
-    NUM_DOUBLE_INDIRECT_BLOCKS * BLOCK_SECTOR_SIZE * ( \
-        BLOCK_SECTOR_SIZE / (block_sector_t)sizeof (block_sector_t)) * \
-        (BLOCK_SECTOR_SIZE / (block_sector_t)sizeof (block_sector_t))))
+#define NUM_DIRECT_SECTORS NUM_DIRECT_BLOCKS
+#define NUM_INDIRECT_SECTORS NUM_INDIRECT_BLOCKS * \
+    (BLOCK_SECTOR_SIZE / (block_sector_t)sizeof (block_sector_t))
+#define NUM_DOUBLE_INDIRECT_SECTORS NUM_DOUBLE_INDIRECT_BLOCKS * \
+    (BLOCK_SECTOR_SIZE / (block_sector_t)sizeof (block_sector_t)) * \
+    (BLOCK_SECTOR_SIZE / (block_sector_t)sizeof (block_sector_t))
 
 #endif
 
@@ -205,11 +202,11 @@ indirect_block_expand (block_sector_t* block, block_sector_t sectors)
 
   for (size_t i = 0; i < BLOCK_SECTOR_SIZE / sizeof (block_sector_t); ++i)
     {
-      block_sector_t remains = block_expand (&indirect_block.blocks[i], 
+      sectors = block_expand (&indirect_block.blocks[i], 
           sectors);
-      if (remains == BLOCK_SECTOR_ERROR)
+      if (sectors == BLOCK_SECTOR_ERROR)
         return BLOCK_SECTOR_ERROR;
-      if (remains == 0)
+      if (sectors == 0)
         {
           cache_write (*block, &indirect_block);
           return 0;
@@ -238,11 +235,11 @@ double_indirect_block_expand (block_sector_t* block, block_sector_t sectors)
 
   for (size_t i = 0; i < BLOCK_SECTOR_SIZE / sizeof (block_sector_t); ++i)
     {
-      block_sector_t remains = indirect_block_expand (
+      sectors = indirect_block_expand (
           &indirect_block.blocks[i], sectors);
-      if (remains == BLOCK_SECTOR_ERROR)
+      if (sectors == BLOCK_SECTOR_ERROR)
         return BLOCK_SECTOR_ERROR;
-      if (remains == 0)
+      if (sectors == 0)
         {
           cache_write (*block, &indirect_block);
           return 0;
@@ -265,21 +262,21 @@ inode_expand (struct inode_disk* inode_disk, block_sector_t sectors)
 
   for (size_t i = 0; i < NUM_DIRECT_BLOCKS; ++i)
     {
-      block_sector_t remains = block_expand (&inode_disk->blocks[i], sectors);
-      if (remains == BLOCK_SECTOR_ERROR)
+      sectors = block_expand (&inode_disk->blocks[i], sectors);
+      if (sectors == BLOCK_SECTOR_ERROR)
         return false;
-      if (remains == 0)
+      if (sectors == 0)
         return true;
     }
 
   for (size_t i = NUM_DIRECT_BLOCKS; 
           i < NUM_DIRECT_BLOCKS + NUM_INDIRECT_BLOCKS; ++i)
     {
-      block_sector_t remains = indirect_block_expand (
+      sectors = indirect_block_expand (
           &inode_disk->blocks[i], sectors);
-      if (remains == BLOCK_SECTOR_ERROR)
+      if (sectors == BLOCK_SECTOR_ERROR)
         return false;
-      if (remains == 0)
+      if (sectors == 0)
         return true;
     }
 
@@ -287,11 +284,11 @@ inode_expand (struct inode_disk* inode_disk, block_sector_t sectors)
           i < NUM_DIRECT_BLOCKS + NUM_INDIRECT_BLOCKS + 
           NUM_DOUBLE_INDIRECT_BLOCKS; ++i)
     {
-      block_sector_t remains = double_indirect_block_expand (
+      sectors = double_indirect_block_expand (
           &inode_disk->blocks[i], sectors);
-      if (remains == BLOCK_SECTOR_ERROR)
+      if (sectors == BLOCK_SECTOR_ERROR)
         return false;
-      if (remains == 0)
+      if (sectors == 0)
         return true;
     }
 
@@ -317,9 +314,8 @@ inode_create (block_sector_t sector, off_t length)
   ASSERT (sizeof *disk_inode == BLOCK_SECTOR_SIZE);
 
 #ifdef FS
-  ASSERT ((block_sector_t)NUM_DIRECT_SECTORS + 
-      (block_sector_t)NUM_INDIRECT_SECTORS + 
-      (block_sector_t)NUM_DOUBLE_INDIRECT_SECTORS >= (block_sector_t)8388608);
+  ASSERT ((NUM_DIRECT_SECTORS + NUM_INDIRECT_SECTORS + 
+      NUM_DOUBLE_INDIRECT_SECTORS) * BLOCK_SECTOR_SIZE >= (block_sector_t)8388608);
   // The maximum file size is 8 MB.
 #endif
 
