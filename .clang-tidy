@@ -6,6 +6,7 @@ Checks: >
   readability-*, 
   -bugprone-reserved-identifier,
   -misc-const-correctness,
+  -misc-include-cleaner,
   -readability-braces-around-statements, 
   -readability-identifier-length,
   -readability-isolate-declaration,
