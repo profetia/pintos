@@ -25,7 +25,7 @@
    that are ready to run but not actually running. */
 static struct list ready_list;
 
-#if defined(THREADS) || defined(FILESYS)  
+#if defined(THREADS) || defined(FS)  
 /* List of sleeping threads. Processes are added to this list
    when they are sleeping and removed when they are woken up. */
 static struct list sleep_list;
@@ -82,7 +82,7 @@ static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 
-#if defined(THREADS) || defined(FILESYS)  
+#if defined(THREADS) || defined(FS)  
 static bool thread_wakeup_tick_less (const struct list_elem *a,
                                      const struct list_elem *b,
                                      void *aux);
@@ -114,7 +114,7 @@ thread_init (void)
 
   lock_init (&tid_lock);
   list_init (&ready_list);
-#if defined(THREADS) || defined(FILESYS)
+#if defined(THREADS) || defined(FS)  
   list_init (&sleep_list);
 #endif
   list_init (&all_list);
@@ -363,7 +363,7 @@ thread_yield (void)
   intr_set_level (old_level);
 }
 
-#if defined(THREADS) || defined(FILESYS)  
+#if defined(THREADS) || defined(FS)   
 /* Send the current thread to sleep for ticks, then block it. */
 void 
 thread_sleep(int64_t ticks)
@@ -872,7 +872,7 @@ allocate_tid (void)
   return tid;
 }
 
-#if defined(THREADS) || defined(FILESYS)  
+#if defined(THREADS) || defined(FS)   
 static bool thread_wakeup_tick_less (const struct list_elem *a,
                                      const struct list_elem *b,
                                      void *aux UNUSED)

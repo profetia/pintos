@@ -7,14 +7,14 @@
 #include "filesys/free-map.h"
 #include "threads/malloc.h"
 
-#ifdef FILESYS
+#ifdef FS
 #include "filesys/cache.h"
 #endif
 
 /* Identifies an inode. */
 #define INODE_MAGIC 0x494e4f44
 
-#ifdef FILESYS
+#ifdef FS
 #define NUM_DIRECT_BLOCKS ((block_sector_t)10)
 #define NUM_INDIRECT_BLOCKS ((block_sector_t)1)
 #define NUM_DOUBLE_INDIRECT_BLOCKS ((block_sector_t)1)
@@ -37,7 +37,7 @@
    Must be exactly BLOCK_SECTOR_SIZE bytes long. */
 struct inode_disk
   {
-#ifdef FILESYS
+#ifdef FS
     block_sector_t blocks[NUM_BLOCKS];  /* Data blocks. */
     // The first NUM_DIRECT_POINTERS blocks are direct blocks.
     // The next NUM_INDIRECT_BLOCKS blocks are indirect blocks.
@@ -47,14 +47,14 @@ struct inode_disk
 #endif
     off_t length;                       /* File size in bytes. */
     unsigned magic;                     /* Magic number. */
-#ifdef FILESYS
+#ifdef FS
     uint32_t unused[126 - NUM_BLOCKS];  /* Not used. */
 #else
     uint32_t unused[125];               /* Not used. */
 #endif
   };
 
-#ifdef FILESYS
+#ifdef FS
 struct indirect_block
   {
     block_sector_t blocks[BLOCK_SECTOR_SIZE / sizeof (block_sector_t)];
@@ -89,7 +89,7 @@ byte_to_sector (const struct inode *inode, off_t pos)
 {
   ASSERT (inode != NULL);
 
-#ifdef FILESYS
+#ifdef FS
   if (pos < inode->data.length)
     {
       block_sector_t block = pos / BLOCK_SECTOR_SIZE;
@@ -135,7 +135,7 @@ byte_to_sector (const struct inode *inode, off_t pos)
    returns the same `struct inode'. */
 static struct list open_inodes;
 
-#ifdef FILESYS
+#ifdef FS
 static uint8_t zeros[BLOCK_SECTOR_SIZE];
 static uint8_t errors[BLOCK_SECTOR_SIZE];
 #endif
@@ -145,13 +145,13 @@ void
 inode_init (void) 
 {
   list_init (&open_inodes);
-#ifdef FILESYS
+#ifdef FS
   memset (zeros, 0, BLOCK_SECTOR_SIZE);
   memset (errors, 0xff, BLOCK_SECTOR_SIZE);
 #endif
 }
 
-#ifdef FILESYS
+#ifdef FS
 /* Allocates a sector and writes the given data to it.
    Returns the sector number if successful, or BLOCK_SECTOR_ERROR
    if no sectors are available. */
@@ -316,7 +316,7 @@ inode_create (block_sector_t sector, off_t length)
      one sector in size, and you should fix that. */
   ASSERT (sizeof *disk_inode == BLOCK_SECTOR_SIZE);
 
-#ifdef FILESYS
+#ifdef FS
   ASSERT ((block_sector_t)NUM_DIRECT_SECTORS + 
       (block_sector_t)NUM_INDIRECT_SECTORS + 
       (block_sector_t)NUM_DOUBLE_INDIRECT_SECTORS >= (block_sector_t)8388608);
@@ -329,20 +329,20 @@ inode_create (block_sector_t sector, off_t length)
       size_t sectors = bytes_to_sectors (length);
       disk_inode->length = length;
       disk_inode->magic = INODE_MAGIC;
-#ifdef FILESYS
+#ifdef FS
       memset (disk_inode->blocks, 0xff, sizeof (disk_inode->blocks));
       if (inode_expand (disk_inode, sectors))
 #else
       if (free_map_allocate (sectors, &disk_inode->start)) 
 #endif      
         {
-#ifdef FILESYS          
+#ifdef FS          
           cache_write (sector, disk_inode);
 #else
           block_write (fs_device, sector, disk_inode);  
 #endif  
 
-#ifndef FILESYS        
+#ifndef FS        
           if (sectors > 0) 
             {
               static char zeros[BLOCK_SECTOR_SIZE];
@@ -391,7 +391,7 @@ inode_open (block_sector_t sector)
   inode->open_cnt = 1;
   inode->deny_write_cnt = 0;
   inode->removed = false;
-#ifdef FILESYS  
+#ifdef FS  
   cache_read (inode->sector, &inode->data);
 #else
   block_read (fs_device, inode->sector, &inode->data);
@@ -415,7 +415,7 @@ inode_get_inumber (const struct inode *inode)
   return inode->sector;
 }
 
-#ifdef FILESYS
+#ifdef FS
 static void
 inode_delete (struct inode *inode);
 #endif
@@ -439,7 +439,7 @@ inode_close (struct inode *inode)
       /* Deallocate blocks if removed. */
       if (inode->removed) 
         {
-#ifdef FILESYS
+#ifdef FS
           inode_delete (inode);
 #else
           free_map_release (inode->sector, 1);
@@ -490,7 +490,7 @@ inode_read_at (struct inode *inode, void *buffer_, off_t size, off_t offset)
       if (sector_ofs == 0 && chunk_size == BLOCK_SECTOR_SIZE)
         {
           /* Read full sector directly into caller's buffer. */
-#ifdef FILESYS          
+#ifdef FS          
           cache_read (sector_idx, buffer + bytes_read);
 #else
           block_read (fs_device, sector_idx, buffer + bytes_read);
@@ -506,7 +506,7 @@ inode_read_at (struct inode *inode, void *buffer_, off_t size, off_t offset)
               if (bounce == NULL)
                 break;
             }          
-#ifdef FILESYS
+#ifdef FS
           cache_read (sector_idx, bounce);
 #else
           block_read (fs_device, sector_idx, bounce);
@@ -540,7 +540,7 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
   if (inode->deny_write_cnt)
     return 0;
 
-#ifdef FILESYS
+#ifdef FS
   if (inode->data.length < offset + size)
     {
       size_t sectors = bytes_to_sectors (offset + size);
@@ -570,7 +570,7 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
       if (sector_ofs == 0 && chunk_size == BLOCK_SECTOR_SIZE)
         {
           /* Write full sector directly to disk. */
-#ifdef FILESYS
+#ifdef FS
           cache_write (sector_idx, buffer + bytes_written);
 #else
           block_write (fs_device, sector_idx, buffer + bytes_written);
@@ -590,7 +590,7 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
              we're writing, then we need to read in the sector
              first.  Otherwise we start with a sector of all zeros. */
           if (sector_ofs > 0 || chunk_size < sector_left) 
-#ifdef FILESYS
+#ifdef FS
             cache_read (sector_idx, bounce);
 #else
             block_read (fs_device, sector_idx, bounce);
@@ -598,7 +598,7 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
           else
             memset (bounce, 0, BLOCK_SECTOR_SIZE);
           memcpy (bounce + sector_ofs, buffer + bytes_written, chunk_size);
-#ifdef FILESYS          
+#ifdef FS        
           cache_write (sector_idx, bounce);
 #else
           block_write (fs_device, sector_idx, bounce);
@@ -642,7 +642,7 @@ inode_length (const struct inode *inode)
   return inode->data.length;
 }
 
-#ifdef FILESYS
+#ifdef FS
 static void
 block_delete (block_sector_t block)
 {

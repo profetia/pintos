@@ -9,7 +9,7 @@
 #include "threads/synch.h"
 #include "threads/thread.h"
 
-#ifdef FILESYS
+#ifdef FS
 #include "filesys/cache.h"
 #endif
   
@@ -98,7 +98,7 @@ timer_sleep (int64_t ticks)
 
   ASSERT (intr_get_level () == INTR_ON);
 
-#if defined(THREADS) || defined(FILESYS)  
+#if defined(THREADS) || defined(FS)  
   // sleep until wakeup by timer_interrupt
   thread_sleep(start + ticks);
 #else
@@ -189,12 +189,12 @@ timer_interrupt (struct intr_frame *args UNUSED)
   ticks++;
   thread_tick ();
 
-#if defined(THREADS) || defined(FILESYS)  
+#if defined(THREADS) || defined(FS)  
   // wakeup sleeping threads
   thread_wakeup(ticks);
 #endif
 
-#ifdef FILESYS
+#ifdef FS
   if (ticks % CACHE_FLUSH_INTERVAL == 0)
     cache_write_behind(false);
 #endif

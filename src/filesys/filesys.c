@@ -7,7 +7,7 @@
 #include "filesys/inode.h"
 #include "filesys/directory.h"
 
-#ifdef FILESYS
+#ifdef FS
 #include "filesys/cache.h"
 #endif
 
@@ -39,7 +39,7 @@ filesys_init (bool format)
 void
 filesys_done (void) 
 {
-#ifdef FILESYS
+#ifdef FS
   cache_write_behind(true);
 #endif
 
