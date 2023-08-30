@@ -7,6 +7,10 @@
 #include "filesys/inode.h"
 #include "filesys/directory.h"
 
+#ifdef FILESYS
+#include "filesys/cache.h"
+#endif
+
 /* Partition that contains the file system. */
 struct block *fs_device;
 
@@ -35,6 +39,10 @@ filesys_init (bool format)
 void
 filesys_done (void) 
 {
+#ifdef FILESYS
+  cache_write_behind(true);
+#endif
+
   free_map_close ();
 }
 

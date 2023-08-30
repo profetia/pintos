@@ -3,10 +3,15 @@
 #include <inttypes.h>
 #include <round.h>
 #include <stdio.h>
+#include <tanc.h>
 #include "devices/pit.h"
 #include "threads/interrupt.h"
 #include "threads/synch.h"
 #include "threads/thread.h"
+
+#ifdef FILESYS
+#include "filesys/cache.h"
+#endif
   
 /* See [8254] for hardware details of the 8254 timer chip. */
 
@@ -187,6 +192,11 @@ timer_interrupt (struct intr_frame *args UNUSED)
 #if defined(THREADS) || defined(FILESYS)  
   // wakeup sleeping threads
   thread_wakeup(ticks);
+#endif
+
+#ifdef FILESYS
+  if (ticks % CACHE_FLUSH_INTERVAL == 0)
+    cache_write_behind(false);
 #endif
 
 #ifdef THREADS
