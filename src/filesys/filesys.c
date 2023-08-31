@@ -2,6 +2,7 @@
 #include <debug.h>
 #include <stdio.h>
 #include <string.h>
+#include <tanc.h>
 #include "filesys/file.h"
 #include "filesys/free-map.h"
 #include "filesys/directory.h"
@@ -107,63 +108,50 @@ parse_path (const char* path)
 }
 
 static struct dir*
-open_path (const char* path, struct path_elem** retained)
+open_path_from (struct dir* root, struct list* path_list)
 {
-  if (path == NULL || strlen (path) == 0)
+  ASSERT (root != NULL);
+  ASSERT (path_list != NULL);
+
+  if (inode_is_removed (dir_get_inode (root)))
     return NULL;
 
-  struct list* path_list;
-  struct dir* root;
-  if (path[0] == '/')
-    {
-      root = dir_open_root ();
-      path_list = parse_path (path + 1);
-    }
-  else
-    {
-      if (thread_current ()->current_dir == NULL)
-        root = dir_open_root ();
-      else
-        root = dir_reopen (thread_current ()->current_dir);
-      path_list = parse_path (path);
-    }
+  if (list_empty (path_list))
+    return root;
 
-  if (path_list == NULL || root == NULL || dir_get_inode (root)->removed)
-    {
-      dir_close (root);
-      return NULL;
-    }
-
-  if (retained != NULL)
-  {
-    struct list_elem* e = list_pop_back (path_list);
-    *retained = list_entry (e, struct path_elem, elem);
-  }
-
-  struct list_elem* e;
-  for (e = list_begin (path_list); e != list_end (path_list);
-      e = list_next (e))
+  for (struct list_elem* e = list_begin (path_list);
+      e != list_end (path_list); e = list_next (e))
   {
     struct path_elem* pe = list_entry (e, struct path_elem, elem);
     struct inode* inode;
-    if (!dir_lookup (root, pe->name, &inode) ||
-        inode->data.type != INODE_DIR)
-    {
-      cleanup_path (path_list);
-      dir_close (root);
+    if (!dir_lookup (root, pe->name, &inode) || !inode_is_dir (inode))    
       return NULL;
-    }
+   
     dir_close (root);
     root = dir_open (inode);
-    if (root == NULL || inode->removed)
-    {
-      cleanup_path (path_list);
-      return NULL;
-    }
+    if (root == NULL || inode_is_removed (inode))
+      return NULL;    
   }
-  
-  cleanup_path (path_list);
+
   return root;
+}
+
+static bool
+is_root_dir (const char* path)
+{
+  return path[0] == '/' && strlen (path) == 1;
+}
+
+static struct dir*
+open_path_root (const char* name)
+{
+  ASSERT (name != NULL);
+  ASSERT (!is_root_dir (name));
+
+  if (name[0] == '/' || thread_current ()->current_dir == NULL)
+    return dir_open_root ();
+
+  return dir_reopen (thread_current ()->current_dir);
 }
 
 /* Creates a file named NAME with the given INITIAL_SIZE.
@@ -175,13 +163,38 @@ filesys_create (const char *name, off_t initial_size)
 {
   block_sector_t inode_sector = 0;
 #ifdef FS  
-  if (name[0] == '/' && strlen (name) == 1)
+  if (is_root_dir (name))
+    return false;
+    
+  struct dir *path_root = open_path_root (name);
+  if (path_root == NULL)
     return false;
 
-  struct path_elem* pe;
-  struct dir *dir = open_path (name, &pe);
-  if (dir == NULL)
+  struct list* path_list = parse_path (name);
+  if (path_list == NULL)
+  {
+    dir_close (path_root);
     return false;
+  }
+
+  if (list_empty (path_list))
+  {
+    dir_close (path_root);
+    cleanup_path (path_list);
+    return false;
+  }
+
+  struct path_elem* file_elem = list_entry (list_pop_back (path_list),
+      struct path_elem, elem);
+
+  struct dir* dir = open_path_from (path_root, path_list);
+  if (dir == NULL)
+  {
+    dir_close (path_root);
+    free (file_elem);    
+    cleanup_path (path_list);
+    return false;
+  }
 #else
   struct dir *dir = dir_open_root ();
 #endif
@@ -195,14 +208,15 @@ filesys_create (const char *name, off_t initial_size)
                         inode_sector, initial_size)
 
 #ifdef FS                        
-                  && dir_add (dir, pe->name, inode_sector));
+                  && dir_add (dir, file_elem->name, inode_sector));
 #else
                   && dir_add (dir, name, inode_sector));
 #endif
   if (!success && inode_sector != 0) 
     free_map_release (inode_sector, 1);
 #ifdef FS  
-  free (pe);
+  free (file_elem);
+  cleanup_path (path_list);
 #endif
   dir_close (dir);
 
@@ -222,10 +236,35 @@ filesys_open (const char *name)
   if (filesys_isdir (name))
     return NULL;
 
-  struct path_elem* pe;
-  struct dir *dir = open_path (name, &pe);
-  if (dir == NULL)
+  struct dir *path_root = open_path_root (name);
+  if (path_root == NULL)
     return NULL;
+
+  struct list* path_list = parse_path (name);
+  if (path_list == NULL)
+  {
+    dir_close (path_root);
+    return NULL;
+  }
+
+  if (list_empty (path_list))
+  {
+    dir_close (path_root);
+    cleanup_path (path_list);
+    return false;
+  }  
+
+  struct path_elem* open_elem = list_entry (list_pop_back (path_list),
+      struct path_elem, elem);
+  
+  struct dir* dir = open_path_from (path_root, path_list);
+  if (dir == NULL)
+  {
+    dir_close (path_root);
+    free (open_elem);
+    cleanup_path (path_list);
+    return NULL;
+  }
 #else
   struct dir *dir = dir_open_root ();
 #endif  
@@ -233,8 +272,9 @@ filesys_open (const char *name)
   struct inode *inode = NULL;
 
 #ifdef FS
-  dir_lookup (dir, pe->name, &inode);
-  free (pe);
+  dir_lookup (dir, open_elem->name, &inode);
+  free (open_elem);
+  cleanup_path (path_list);
 #else
   if (dir != NULL)
     dir_lookup (dir, name, &inode);
@@ -253,20 +293,46 @@ bool
 filesys_remove (const char *name) 
 {
 #ifdef FS
-  if (name[0] == '/' && strlen (name) == 1)
+  if (is_root_dir (name))
     return false;
 
-  struct path_elem* pe;
-  struct dir *dir = open_path (name, &pe);
-  if (dir == NULL)
+  struct dir *path_root = open_path_root (name);
+  if (path_root == NULL)
     return false;
+
+  struct list* path_list = parse_path (name);
+  if (path_list == NULL)
+  {
+    dir_close (path_root);
+    return false;
+  }
+
+  if (list_empty (path_list))
+  {
+    dir_close (path_root);
+    cleanup_path (path_list);
+    return false;
+  }  
+
+  struct path_elem* remove_elem = list_entry (list_pop_back (path_list),
+      struct path_elem, elem);
+
+  struct dir* dir = open_path_from (path_root, path_list);
+  if (dir == NULL)
+  {
+    dir_close (path_root);
+    free (remove_elem);
+    cleanup_path (path_list);
+    return false;
+  }
 #else
   struct dir *dir = dir_open_root ();
 #endif
 
 #ifdef FS
-  bool success = dir != NULL && dir_remove (dir, pe->name);
-  free (pe);
+  bool success = dir != NULL && dir_remove (dir, remove_elem->name);
+  free (remove_elem);
+  cleanup_path (path_list);
 #else
   bool success = dir != NULL && dir_remove (dir, name);
 #endif
@@ -282,12 +348,27 @@ filesys_opendir (const char *name)
   if (!filesys_isdir (name))
     return NULL;
 
-  if (name[0] == '/' && strlen (name) == 1)
+  if (is_root_dir (name))
     return dir_open_root ();
 
-  struct dir *dir = open_path (name, NULL);
-  if (dir == NULL)
+  struct dir *path_root = open_path_root (name);
+  if (path_root == NULL)
     return NULL;
+
+  struct list* path_list = parse_path (name);
+  if (path_list == NULL)
+  {
+    dir_close (path_root);
+    return NULL;
+  }
+
+  struct dir* dir = open_path_from (path_root, path_list);
+  if (dir == NULL)
+  {
+    dir_close (path_root);
+    cleanup_path (path_list);
+    return NULL;
+  }
 
   return dir;
 }
@@ -295,7 +376,7 @@ filesys_opendir (const char *name)
 bool 
 filesys_chdir (const char *name)
 {
-  if (name[0] == '/' && strlen (name) == 1)
+  if (is_root_dir (name))
     {
       if (thread_current ()->current_dir != NULL)
         dir_close (thread_current ()->current_dir);
@@ -303,9 +384,24 @@ filesys_chdir (const char *name)
       return true;
     }
 
-  struct dir *dir = open_path (name, NULL);
-  if (dir == NULL)
+  struct dir *path_root = open_path_root (name);
+  if (path_root == NULL)
     return false;
+
+  struct list* path_list = parse_path (name);
+  if (path_list == NULL)
+  {
+    dir_close (path_root);
+    return false;
+  }
+
+  struct dir* dir = open_path_from (path_root, path_list);
+  if (dir == NULL)
+  {
+    dir_close (path_root);
+    cleanup_path (path_list);
+    return false;
+  }
 
   if (thread_current ()->current_dir != NULL)
     dir_close (thread_current ()->current_dir);
@@ -316,39 +412,116 @@ filesys_chdir (const char *name)
 bool
 filesys_mkdir (const char *name)
 {
-  if (name[0] == '/' && strlen (name) == 1)
+  if (is_root_dir (name))
     return false;
 
-  struct path_elem* pe;
-  struct dir *dir = open_path (name, &pe);
-  if (dir == NULL)
+  struct dir *path_root = open_path_root (name);
+  if (path_root == NULL)
     return false;
+
+  struct list* path_list = parse_path (name);
+  if (path_list == NULL)
+  {
+    dir_close (path_root);
+    return false;
+  }
+
+  if (list_empty (path_list))
+  {
+    dir_close (path_root);
+    cleanup_path (path_list);
+    return false;
+  }  
+
+  struct path_elem* dir_elem = list_entry (list_pop_back (path_list),
+      struct path_elem, elem);
+
+  struct dir* dir = open_path_from (path_root, path_list);
+  if (dir == NULL)
+  {
+    dir_close (path_root);
+    free (dir_elem);
+    cleanup_path (path_list);
+    return false;
+  }
 
   block_sector_t inode_sector = 0;
   bool success = (dir != NULL
                   && free_map_allocate (1, &inode_sector)
                   && dir_create (inode_sector, 16, inode_get_inumber (dir_get_inode (dir)))
-                  && dir_add (dir, pe->name, inode_sector));
+                  && dir_add (dir, dir_elem->name, inode_sector));
   if (!success && inode_sector != 0) 
     free_map_release (inode_sector, 1);
-  free (pe);
+  free (dir_elem);
+  cleanup_path (path_list);
   dir_close (dir);
 
   return success;
 }
 
+static struct inode*
+filesys_find (const char* name)
+{
+  if (is_root_dir (name))
+    return dir_get_inode (dir_open_root ());
+
+  struct dir *path_root = open_path_root (name);
+  if (path_root == NULL)
+    return NULL;
+
+  struct list* path_list = parse_path (name);
+  if (path_list == NULL)
+  {
+    dir_close (path_root);
+    return NULL;
+  }
+
+  if (list_empty (path_list))
+  {
+    dir_close (path_root);
+    cleanup_path (path_list);
+    return false;
+  }  
+
+  struct path_elem* file_elem = list_entry (list_pop_back (path_list),
+      struct path_elem, elem);
+
+  struct dir* dir = open_path_from (path_root, path_list);
+  if (dir == NULL)
+  {
+    dir_close (path_root);
+    free (file_elem);
+    cleanup_path (path_list);
+    return NULL;
+  }
+
+  struct inode* inode;
+  dir_lookup (dir, file_elem->name, &inode);
+  dir_close (dir);
+  free (file_elem);
+  cleanup_path (path_list);
+  return inode;
+}
+
+bool
+filesys_exists (const char *name)
+{
+  struct inode* inode = filesys_find (name);
+  if (inode == NULL)
+    return false;
+  inode_close (inode);
+  return true;
+}
+
 bool
 filesys_isdir (const char *name)
 {
-  if (name[0] == '/' && strlen (name) == 1)
-    return true;
-
-  struct dir *dir = open_path (name, NULL);
-  if (dir == NULL)
+  struct inode* inode = filesys_find (name);
+  if (inode == NULL)
     return false;
-
-  dir_close (dir);
-  return true;
+  bool is_dir = inode_is_dir (inode);
+  inode_close (inode);
+  return is_dir;
 }
 #endif
 

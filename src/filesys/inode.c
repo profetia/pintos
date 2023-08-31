@@ -597,6 +597,18 @@ inode_length (const struct inode *inode)
 }
 
 #ifdef FS
+bool
+inode_is_dir (const struct inode *inode)
+{
+  return inode->data.type == INODE_DIR;
+}
+
+bool
+inode_is_removed (const struct inode *inode)
+{
+  return inode->removed;
+}
+
 static void
 block_delete (block_sector_t block)
 {

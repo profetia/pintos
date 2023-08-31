@@ -250,7 +250,7 @@ dir_remove (struct dir *dir, const char *name)
     goto done;
 
 #ifdef FS
-  if (inode->data.type == INODE_DIR)
+  if (inode_is_dir (inode))
   {
     struct dir *subdir = dir_open (inode);
     if (subdir == NULL)

@@ -24,6 +24,7 @@ struct dir* filesys_opendir (const char *name);
 bool filesys_chdir (const char *name);
 bool filesys_mkdir (const char *name);
 
+bool filesys_exists (const char *name);
 bool filesys_isdir (const char *name);
 #endif
 
