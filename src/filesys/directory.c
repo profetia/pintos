@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <list.h>
+#include <tanc.h>
 #include "filesys/filesys.h"
 #include "threads/malloc.h"
 
@@ -122,6 +123,9 @@ lookup (const struct dir *dir, const char *name,
   ASSERT (dir != NULL);
   ASSERT (name != NULL);
 
+#ifdef FS
+  lock_acquire (&dir->inode->lock);
+#endif
   for (ofs = 0; inode_read_at (dir->inode, &e, sizeof e, ofs) == sizeof e;
        ofs += sizeof e) 
     if (e.in_use && !strcmp (name, e.name)) 
@@ -130,8 +134,15 @@ lookup (const struct dir *dir, const char *name,
           *ep = e;
         if (ofsp != NULL)
           *ofsp = ofs;
+#ifdef FS
+        lock_release (&dir->inode->lock);
+#endif          
         return true;
       }
+
+#ifdef FS
+  lock_release (&dir->inode->lock);
+#endif        
   return false;
 }
 
@@ -190,6 +201,9 @@ dir_add (struct dir *dir, const char *name, block_sector_t inode_sector)
      inode_read_at() will only return a short read at end of file.
      Otherwise, we'd need to verify that we didn't get a short
      read due to something intermittent such as low memory. */
+#ifdef FS
+  lock_acquire (&dir->inode->lock);
+#endif     
   for (ofs = 0; inode_read_at (dir->inode, &e, sizeof e, ofs) == sizeof e;
        ofs += sizeof e) 
     if (!e.in_use)
@@ -199,12 +213,17 @@ dir_add (struct dir *dir, const char *name, block_sector_t inode_sector)
   e.in_use = true;
   strlcpy (e.name, name, sizeof e.name);
   e.inode_sector = inode_sector;
+#ifdef FS
+  lock_release (&dir->inode->lock);
+#endif
+
   success = inode_write_at (dir->inode, &e, sizeof e, ofs) == sizeof e;
 
  done:
   return success;
 }
 
+#ifdef FS
 static bool
 dir_empty (struct dir *dir)
 {
@@ -213,6 +232,7 @@ dir_empty (struct dir *dir)
 
   ASSERT (dir != NULL);
 
+  lock_acquire (&dir->inode->lock);
   for (ofs = 0; inode_read_at (dir->inode, &e, sizeof e, ofs) == sizeof e;
       ofs += sizeof e)
     if (e.in_use)
@@ -220,11 +240,14 @@ dir_empty (struct dir *dir)
       if (strcmp (e.name, ".") == 0 || strcmp (e.name, "..") == 0)
         continue;
 
+      lock_release (&dir->inode->lock);
       return false;
     }      
 
+  lock_release (&dir->inode->lock);
   return true;
 }
+#endif
 
 /* Removes any entry for NAME in DIR.
    Returns true if successful, false on failure,
@@ -288,14 +311,25 @@ dir_readdir (struct dir *dir, char name[NAME_MAX + 1])
 {
   struct dir_entry e;
 
+#ifdef FS
+  lock_acquire (&dir->inode->lock);
+#endif
   while (inode_read_at (dir->inode, &e, sizeof e, dir->pos) == sizeof e) 
     {
       dir->pos += sizeof e;
       if (e.in_use && strcmp (e.name, ".") != 0 && strcmp (e.name, "..") != 0)
         {
           strlcpy (name, e.name, NAME_MAX + 1);
+#ifdef FS
+          lock_release (&dir->inode->lock);
+#endif
           return true;
         } 
     }
+
+#ifdef FS
+  lock_release (&dir->inode->lock);
+#endif
+
   return false;
 }

@@ -82,6 +82,9 @@ byte_to_sector (const struct inode *inode, off_t pos)
 /* List of open inodes, so that opening a single inode twice
    returns the same `struct inode'. */
 static struct list open_inodes;
+#ifdef FS
+static struct lock open_inodes_lock;
+#endif
 
 #ifdef FS
 static uint8_t zeros[BLOCK_SECTOR_SIZE];
@@ -94,6 +97,7 @@ inode_init (void)
 {
   list_init (&open_inodes);
 #ifdef FS
+  lock_init (&open_inodes_lock);
   memset (zeros, 0, BLOCK_SECTOR_SIZE);
   memset (errors, 0xff, BLOCK_SECTOR_SIZE);
 #endif
@@ -323,16 +327,25 @@ inode_open (block_sector_t sector)
   struct inode *inode;
 
   /* Check whether this inode is already open. */
+#ifdef FS
+  lock_acquire (&open_inodes_lock);
+#endif
   for (e = list_begin (&open_inodes); e != list_end (&open_inodes);
        e = list_next (e)) 
     {
       inode = list_entry (e, struct inode, elem);
       if (inode->sector == sector) 
         {
+#ifdef FS
+          lock_release (&open_inodes_lock);
+#endif
           inode_reopen (inode);
           return inode; 
         }
     }
+#ifdef FS
+  lock_release (&open_inodes_lock);
+#endif
 
   /* Allocate memory. */
   inode = malloc (sizeof *inode);
@@ -340,12 +353,19 @@ inode_open (block_sector_t sector)
     return NULL;
 
   /* Initialize. */
+#ifdef FS
+  lock_acquire (&open_inodes_lock);
+#endif
   list_push_front (&open_inodes, &inode->elem);
+#ifdef FS
+  lock_release (&open_inodes_lock);
+#endif
   inode->sector = sector;
   inode->open_cnt = 1;
   inode->deny_write_cnt = 0;
   inode->removed = false;
 #ifdef FS  
+  lock_init (&inode->lock);
   cache_read (inode->sector, &inode->data);
 #else
   block_read (fs_device, inode->sector, &inode->data);
@@ -387,8 +407,15 @@ inode_close (struct inode *inode)
   /* Release resources if this was the last opener. */
   if (--inode->open_cnt == 0)
     {
+#ifdef FS
+      lock_acquire (&open_inodes_lock);
+#endif       
       /* Remove from inode list and release lock. */
       list_remove (&inode->elem);
+
+#ifdef FS
+      lock_release (&open_inodes_lock);
+#endif
  
       /* Deallocate blocks if removed. */
       if (inode->removed) 
@@ -495,14 +522,19 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
     return 0;
 
 #ifdef FS
+  lock_acquire (&inode->lock);
   if (inode->data.length < offset + size)
     {
       size_t sectors = bytes_to_sectors (offset + size);
       if (!inode_expand (&inode->data, sectors))
+      {
+        lock_release (&inode->lock);
         return 0;
+      }
       inode->data.length = offset + size;
       cache_write (inode->sector, &inode->data);
     }
+  lock_release (&inode->lock);
 #endif
 
   while (size > 0) 
