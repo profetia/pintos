@@ -43,6 +43,7 @@ filesys_done (void)
 {
 #ifdef FS
   cache_write_behind(true);
+  cache_flush();
 #endif
 
   free_map_close ();
