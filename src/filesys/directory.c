@@ -3,7 +3,6 @@
 #include <string.h>
 #include <list.h>
 #include "filesys/filesys.h"
-#include "filesys/inode.h"
 #include "threads/malloc.h"
 
 /* A directory. */
@@ -24,13 +23,36 @@ struct dir_entry
 /* Creates a directory with space for ENTRY_CNT entries in the
    given SECTOR.  Returns true if successful, false on failure. */
 bool
-dir_create (block_sector_t sector, size_t entry_cnt)
-{
-  return inode_create (
-#ifdef FS    
-    INODE_DIR, 
+dir_create (block_sector_t sector, size_t entry_cnt
+#ifdef FS
+    , block_sector_t parent
 #endif
-    sector, entry_cnt * sizeof (struct dir_entry));
+)
+{
+#ifdef FS
+  bool success = inode_create (INODE_DIR, 
+      sector, entry_cnt * sizeof (struct dir_entry));
+  if (!success)
+    return false;
+
+  struct dir* dir = dir_open (inode_open (sector));
+  if (dir == NULL)
+    return false;
+
+  success = dir_add (dir, ".", sector);
+  if (!success)
+    goto done;
+
+  success = dir_add (dir, "..", parent);
+  if (!success)
+    goto done;
+
+done:
+  dir_close (dir);
+  return success;
+#else
+  return inode_create (sector, entry_cnt * sizeof (struct dir_entry));
+#endif    
 }
 
 /* Opens and returns the directory for the given INODE, of which
@@ -45,12 +67,10 @@ dir_open (struct inode *inode)
       dir->pos = 0;
       return dir;
     }
-  else
-    {
-      inode_close (inode);
-      free (dir);
-      return NULL; 
-    }
+
+  inode_close (inode);
+  free (dir);
+  return NULL; 
 }
 
 /* Opens the root directory and returns a directory for it.
@@ -97,7 +117,7 @@ lookup (const struct dir *dir, const char *name,
         struct dir_entry *ep, off_t *ofsp) 
 {
   struct dir_entry e;
-  size_t ofs;
+  off_t ofs;
   
   ASSERT (dir != NULL);
   ASSERT (name != NULL);
@@ -138,7 +158,10 @@ dir_lookup (const struct dir *dir, const char *name,
 
 /* Adds a file named NAME to DIR, which must not already contain a
    file by that name.  The file's inode is in sector
-   INODE_SECTOR.
+   INODE_SECTOR. 
+   Note that this function is not responsible for creating the
+   file itself. The file should already be created before this
+   function is called.
    Returns true if successful, false on failure.
    Fails if NAME is invalid (i.e. too long) or a disk or memory
    error occurs. */
@@ -182,6 +205,27 @@ dir_add (struct dir *dir, const char *name, block_sector_t inode_sector)
   return success;
 }
 
+static bool
+dir_empty (struct dir *dir)
+{
+  struct dir_entry e;
+  off_t ofs;
+
+  ASSERT (dir != NULL);
+
+  for (ofs = 0; inode_read_at (dir->inode, &e, sizeof e, ofs) == sizeof e;
+      ofs += sizeof e)
+    if (e.in_use)
+    {
+      if (strcmp (e.name, ".") == 0 || strcmp (e.name, "..") == 0)
+        continue;
+
+      return false;
+    }      
+
+  return true;
+}
+
 /* Removes any entry for NAME in DIR.
    Returns true if successful, false on failure,
    which occurs only if there is no file with the given NAME. */
@@ -204,6 +248,23 @@ dir_remove (struct dir *dir, const char *name)
   inode = inode_open (e.inode_sector);
   if (inode == NULL)
     goto done;
+
+#ifdef FS
+  if (inode->data.type == INODE_DIR)
+  {
+    struct dir *subdir = dir_open (inode);
+    if (subdir == NULL)
+      goto done;
+
+    if (!dir_empty (subdir))
+    {
+      dir_close (subdir);
+      goto done;
+    }
+
+    dir_close (subdir);
+  }
+#endif
 
   /* Erase directory entry. */
   e.in_use = false;
@@ -230,7 +291,7 @@ dir_readdir (struct dir *dir, char name[NAME_MAX + 1])
   while (inode_read_at (dir->inode, &e, sizeof e, dir->pos) == sizeof e) 
     {
       dir->pos += sizeof e;
-      if (e.in_use)
+      if (e.in_use && strcmp (e.name, ".") != 0 && strcmp (e.name, "..") != 0)
         {
           strlcpy (name, e.name, NAME_MAX + 1);
           return true;
