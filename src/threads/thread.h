@@ -147,6 +147,10 @@ struct thread
     int next_mapid;                     /* Next mapid. */
 #endif
 
+#ifdef FS
+    struct dir* current_dir;            /* Current directory. */
+#endif
+
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
   };

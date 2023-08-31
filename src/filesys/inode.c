@@ -39,13 +39,16 @@ struct inode_disk
     // The first NUM_DIRECT_POINTERS blocks are direct blocks.
     // The next NUM_INDIRECT_BLOCKS blocks are indirect blocks.
     // The last NUM_DOUBLE_INDIRECT_BLOCKS blocks are double indirect blocks.
+    enum inode_type type;               /* File or directory. */
 #else
     block_sector_t start;               /* First data sector. */
 #endif
     off_t length;                       /* File size in bytes. */
     unsigned magic;                     /* Magic number. */
 #ifdef FS
-    uint32_t unused[126 - NUM_BLOCKS];  /* Not used. */
+    uint8_t unused[504 - NUM_BLOCKS * sizeof(block_sector_t) - 
+                    sizeof(enum inode_type)];
+                                        /* Not used. */
 #else
     uint32_t unused[125];               /* Not used. */
 #endif
@@ -304,7 +307,11 @@ inode_expand (struct inode_disk* inode_disk, block_sector_t sectors)
    Returns true if successful.
    Returns false if memory or disk allocation fails. */
 bool
-inode_create (block_sector_t sector, off_t length)
+inode_create (
+#ifdef FS
+  enum inode_type type,
+#endif
+  block_sector_t sector, off_t length)
 {
   struct inode_disk *disk_inode = NULL;
   bool success = false;
@@ -328,6 +335,7 @@ inode_create (block_sector_t sector, off_t length)
       disk_inode->length = length;
       disk_inode->magic = INODE_MAGIC;
 #ifdef FS
+      disk_inode->type = type;
       memset (disk_inode->blocks, 0xff, sizeof (disk_inode->blocks));
       if (inode_expand (disk_inode, sectors))
 #else

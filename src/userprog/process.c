@@ -397,6 +397,15 @@ process_exit (void)
       free (file_elem);
     }
 
+#ifdef FS
+  // Remove the current process's directory
+  if (cur->current_dir != NULL)
+    {
+      dir_close (cur->current_dir);
+      cur->current_dir = NULL;
+    }
+#endif
+
   // Close the executable file
   if (cur->exec_file != NULL)
     {
