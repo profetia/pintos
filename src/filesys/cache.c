@@ -9,6 +9,7 @@
 #include "threads/synch.h"
 #include "threads/thread.h"
 
+#ifdef FS
 static struct cache_entry cache[CACHE_SIZE];
 static struct lock cache_lock;
 
@@ -234,3 +235,4 @@ cache_write_behind_daemon(void *aux UNUSED)
   
   lock_release(&write_behind_lock);
 }
+#endif

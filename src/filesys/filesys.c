@@ -49,6 +49,7 @@ filesys_done (void)
   free_map_close ();
 }
 
+#ifdef FS
 struct path_elem
 {
   char name[NAME_MAX + 1];
@@ -154,6 +155,7 @@ open_path_root (const char* name)
 
   return dir_reopen (thread_current ()->current_dir);
 }
+#endif
 
 /* Creates a file named NAME with the given INITIAL_SIZE.
    Returns true if successful, false otherwise.

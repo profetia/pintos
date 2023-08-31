@@ -1,6 +1,7 @@
 #ifndef FILESYS_CACHE_H
 #define FILESYS_CACHE_H
 
+#ifdef FS
 #include <stdbool.h>
 #include <stdint.h>
 #include "devices/block.h"
@@ -28,5 +29,6 @@ void cache_flush(void);
 
 void cache_read_ahead(block_sector_t sector);
 void cache_write_behind(bool terminate);
+#endif
 
 #endif // FILESYS_CACHE_H
