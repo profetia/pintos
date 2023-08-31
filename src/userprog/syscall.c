@@ -498,7 +498,12 @@ syscall_inumber (int fd)
   }
   
   lock_acquire (&fs_lock);
-  int inumber = inode_get_inumber(fe->file);
+  int inumber;
+  if (fe->type == INODE_DIR) {
+    inumber = inode_get_inumber(dir_get_inode(fe->file));
+  } else {
+    inumber = inode_get_inumber(file_get_inode(fe->file));
+  }
   lock_release (&fs_lock);
   return inumber;
 }
