@@ -128,7 +128,7 @@ open_path (const char* path, struct path_elem** retained)
       path_list = parse_path (path);
     }
 
-  if (path_list == NULL || root == NULL)
+  if (path_list == NULL || root == NULL || dir_get_inode (root)->removed)
     {
       dir_close (root);
       return NULL;
@@ -155,7 +155,7 @@ open_path (const char* path, struct path_elem** retained)
     }
     dir_close (root);
     root = dir_open (inode);
-    if (root == NULL)
+    if (root == NULL || inode->removed)
     {
       cleanup_path (path_list);
       return NULL;
