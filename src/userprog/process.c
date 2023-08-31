@@ -301,13 +301,6 @@ process_wait (tid_t child_tid)
   return exit_status;
 }
 
-struct file_elem
-  {
-    struct file* file;
-    int fd;
-    struct list_elem elem;
-  }; 
-
 static bool 
 process_child_pred (const struct list_elem* e, void* aux)
 {
@@ -435,7 +428,13 @@ process_activate (void)
 static bool process_file_pred (const struct list_elem *e, void *aux);
 
 int 
-process_add_file (struct file *f)
+process_add_file (
+#ifdef FS
+  enum inode_type type, 
+  void* f)
+#else      
+  struct file *f)
+#endif  
 {
   struct thread* cur = thread_current ();
   struct file_elem* fe = malloc (sizeof (struct file_elem));
@@ -444,6 +443,9 @@ process_add_file (struct file *f)
   fe->file = f;
   fe->fd = cur->next_fd;
   cur->next_fd++;
+#ifdef FS
+  fe->type = type;
+#endif  
   list_push_back (&cur->file_list, &fe->elem);
   return fe->fd;
 }
@@ -455,7 +457,11 @@ process_file_pred (const struct list_elem *e, void *aux)
   return fe->fd == *(int*)aux;
 }
 
+#ifdef FS
+struct file_elem *
+#else
 struct file*
+#endif
 process_get_file (int fd)
 {
   struct list_elem* e = list_find_if (&thread_current ()->file_list, 
@@ -464,7 +470,12 @@ process_get_file (int fd)
     return NULL;
 
   struct file_elem* fe = list_entry (e, struct file_elem, elem);
+
+#ifdef FS
+  return fe;
+#else
   return fe->file;
+#endif
 }
 
 void
@@ -478,7 +489,14 @@ process_close_file (int fd)
   struct file_elem* fe = list_entry (e, struct file_elem, elem);
 
   lock_acquire (&fs_lock);
+#ifdef FS  
+  if (fe->type == INODE_FILE)
+    file_close (fe->file);
+  else
+    dir_close (fe->file);
+#else
   file_close (fe->file);
+#endif
   lock_release (&fs_lock);
   list_remove (&fe->elem);
   free (fe);
@@ -653,7 +671,7 @@ load (struct list* arg_list, void (**eip) (void), void **esp)
 
   /* Open executable file. */
   lock_acquire(&fs_lock);
-  file = filesys_open (exec_name);
+  file = filesys_open (exec_name, NULL);
   if (file == NULL) 
     {
       printf ("load: %s: open failed\n", exec_name);

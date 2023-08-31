@@ -753,6 +753,8 @@ init_thread (struct thread *t, const char *name, int priority)
 
 #ifdef FS
   t->current_dir = NULL;
+  // This is done lazily in process.c since thread_init is called before 
+  // filesys_init.
 #endif
 
   old_level = intr_disable ();

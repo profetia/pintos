@@ -4,6 +4,10 @@
 #include "threads/synch.h"
 #include "threads/thread.h"
 
+#ifdef FS
+#include "filesys/inode.h"
+#endif
+
 extern struct lock fs_lock;
 
 void process_init (void);
@@ -14,8 +18,29 @@ void process_activate (void);
 
 bool install_page (void *upage, void *kpage, bool writable);
 
+struct file_elem
+  {
+#ifdef FS
+    enum inode_type type;
+    void* file;
+#else
+    struct file* file;
+#endif
+    int fd;
+    struct list_elem elem;
+  }; 
+
+#ifdef FS
+int process_add_file (enum inode_type type, void *f);
+#else
 int process_add_file (struct file *f);
+#endif
+
+#ifdef FS
+struct file_elem *process_get_file (int fd);
+#else
 struct file *process_get_file (int fd);
+#endif
 void process_close_file (int fd);
 
 #ifdef VM

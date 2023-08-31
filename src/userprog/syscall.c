@@ -11,8 +11,14 @@
 #include "threads/vaddr.h"
 #include "userprog/pagedir.h"
 #include "userprog/process.h"
+
 #ifdef VM
 #include "vm/page.h"
+#endif
+
+#ifdef FS
+#include "filesys/directory.h"
+#include "filesys/inode.h"
 #endif
 
 static void syscall_handler (struct intr_frame *);
@@ -34,6 +40,14 @@ static void syscall_close (int fd);
 #ifdef VM
 static int syscall_mmap (int fd, void *addr);
 static void syscall_munmap (int mapid);
+#endif
+
+#ifdef FS
+static bool syscall_chdir (const char *name);
+static bool syscall_mkdir (const char *name);
+static bool syscall_readdir (int fd, char *name);
+static bool syscall_isdir (int fd);
+static int syscall_inumber (int fd);
 #endif
 
 static bool is_valid_vaddr (const void *vaddr, bool write);
@@ -142,6 +156,35 @@ syscall_handler (struct intr_frame *f)
         syscall_munmap(*(int *)(f->esp + 4));
         break;
 #endif
+
+#ifdef FS
+      case SYS_CHDIR:
+        if (!is_valid_word(f->esp + 4, false))
+          syscall_exit(-1);        
+        f->eax = syscall_chdir(*(char **)(f->esp + 4));
+        break;
+      case SYS_MKDIR:
+        if (!is_valid_word(f->esp + 4, false))
+          syscall_exit(-1);        
+        f->eax = syscall_mkdir(*(char **)(f->esp + 4));
+        break;
+      case SYS_READDIR:
+        if (!is_valid_word(f->esp + 4, false) || 
+            !is_valid_word(f->esp + 8, false)) 
+          syscall_exit(-1);        
+        f->eax = syscall_readdir(*(int *)(f->esp + 4), *(char **)(f->esp + 8));
+        break;
+      case SYS_ISDIR:
+        if (!is_valid_word(f->esp + 4, false))
+          syscall_exit(-1);        
+        f->eax = syscall_isdir(*(int *)(f->esp + 4));
+        break;
+      case SYS_INUMBER:
+        if (!is_valid_word(f->esp + 4, false))
+          syscall_exit(-1);        
+        f->eax = syscall_inumber(*(int *)(f->esp + 4));
+        break;
+#endif
       default:
         syscall_exit(-1);
     }
@@ -202,21 +245,39 @@ syscall_open (const char *file)
   if (!is_valid_string(file, false)) 
     syscall_exit (-1);
   lock_acquire (&fs_lock);
-  struct file *f = filesys_open(file);
+#ifdef FS  
+  enum inode_type type;
+  void *f = filesys_open(file, &type);
+#else
+  struct file *f = filesys_open(file);  
+#endif
   lock_release (&fs_lock);
   if (f == NULL) {
     return -1;
   }
+
+#ifdef FS
+  return process_add_file(type, f);
+#else
   return process_add_file(f);
+#endif
 }
 
 static int
 syscall_filesize (int fd)
 {
+#ifdef FS
+  struct file_elem *fe = process_get_file(fd);
+  if (fe == NULL || fe->type != INODE_FILE) {
+    syscall_exit(-1);
+  }
+  struct file *f = fe->file;
+#else
   struct file *f = process_get_file(fd);
   if (f == NULL) {
     syscall_exit(-1);
   }
+#endif  
   lock_acquire (&fs_lock);
   int size = file_length(f);
   lock_release (&fs_lock);
@@ -241,9 +302,17 @@ syscall_read (int fd, void *buffer, unsigned size)
       return (int)size;
     } 
 
+#ifdef FS
+  struct file_elem *fe = process_get_file(fd);
+  if (fe == NULL || fe->type != INODE_FILE) {
+    syscall_exit(-1);
+  }
+  struct file *f = fe->file;
+#else
   struct file *f = process_get_file(fd);
   if (f == NULL) 
     syscall_exit(-1);
+#endif
   
   lock_acquire (&fs_lock);
   int bytes_read = file_read(f, buffer, (off_t)size);
@@ -266,9 +335,17 @@ syscall_write (int fd, const void *buffer, unsigned size)
       return (int)size;
     }
 
+#ifdef FS
+  struct file_elem *fe = process_get_file(fd);
+  if (fe == NULL || fe->type != INODE_FILE) {
+    syscall_exit(-1);
+  }
+  struct file *f = fe->file;
+#else
   struct file *f = process_get_file(fd);
   if (f == NULL) 
     syscall_exit(-1);
+#endif
   
   lock_acquire (&fs_lock);
   int bytes_written = file_write(f, buffer, (off_t)size);
@@ -279,9 +356,17 @@ syscall_write (int fd, const void *buffer, unsigned size)
 static void
 syscall_seek (int fd, unsigned position)
 {
+#ifdef FS
+  struct file_elem *fe = process_get_file(fd);
+  if (fe == NULL || fe->type != INODE_FILE) {
+    syscall_exit(-1);
+  }
+  struct file *f = fe->file;
+#else
   struct file *f = process_get_file(fd);
   if (f == NULL) 
     syscall_exit(-1);
+#endif
   lock_acquire (&fs_lock);
   file_seek(f, (off_t)position);
   lock_release (&fs_lock);
@@ -290,9 +375,17 @@ syscall_seek (int fd, unsigned position)
 static unsigned
 syscall_tell (int fd)
 {
+#ifdef FS
+  struct file_elem *fe = process_get_file(fd);
+  if (fe == NULL || fe->type != INODE_FILE) {
+    syscall_exit(-1);
+  }
+  struct file *f = fe->file;
+#else
   struct file *f = process_get_file(fd);
   if (f == NULL) 
     syscall_exit(-1);
+#endif
   lock_acquire (&fs_lock);
   unsigned position = file_tell(f);
   lock_release (&fs_lock);
@@ -302,9 +395,15 @@ syscall_tell (int fd)
 static void
 syscall_close (int fd)
 {
+#ifdef FS
+  struct file_elem *fe = process_get_file(fd);
+  if (fe == NULL) 
+    syscall_exit(-1);
+#else    
   struct file *f = process_get_file(fd);
   if (f == NULL) 
     syscall_exit(-1);
+#endif
   process_close_file(fd);
 }
 
@@ -331,6 +430,72 @@ void syscall_munmap (int mapid)
 {
   process_remove_mmap(mapid);
 }
+#endif
+
+#ifdef FS
+static bool
+syscall_chdir (const char *name)
+{
+  if (!is_valid_string(name, false)) 
+    syscall_exit(-1);
+  lock_acquire (&fs_lock);
+  bool success = filesys_chdir(name);
+  lock_release (&fs_lock);
+  return success;
+}
+
+static bool
+syscall_mkdir (const char *name)
+{
+  if (!is_valid_string(name, false)) 
+    syscall_exit(-1);
+  lock_acquire (&fs_lock);
+  bool success = filesys_mkdir(name);
+  lock_release (&fs_lock);
+  return success;
+}
+
+bool
+syscall_readdir (int fd, char *name)
+{
+  if (!is_valid_vaddr(name, false)) 
+    syscall_exit(-1);
+  struct file_elem *fe = process_get_file(fd);
+  if (fe == NULL || fe->type != INODE_DIR) {
+    syscall_exit(-1);
+  }
+
+  struct dir *dir = fe->file;
+  lock_acquire (&fs_lock);
+  bool success = dir_readdir(dir, name);
+  lock_release (&fs_lock);
+  return success;
+}
+
+bool
+syscall_isdir (int fd)
+{
+  struct file_elem *fe = process_get_file(fd);
+  if (fe == NULL) {
+    syscall_exit(-1);
+  }
+  return fe->type == INODE_DIR;
+}
+
+int
+syscall_inumber (int fd)
+{
+  struct file_elem *fe = process_get_file(fd);
+  if (fe == NULL) {
+    syscall_exit(-1);
+  }
+  
+  lock_acquire (&fs_lock);
+  int inumber = inode_get_inumber(fe->file);
+  lock_release (&fs_lock);
+  return inumber;
+}
+
 #endif
 
 /* Returns true if the given virtual address is valid,
