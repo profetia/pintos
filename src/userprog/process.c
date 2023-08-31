@@ -31,13 +31,17 @@ static bool load (struct list* arg_list, void (**eip) (void), void **esp);
 static struct list* parse_args(const char* file_name);
 static void cleanup_args(struct list* arg_list);
 
+#ifndef FS
 struct lock fs_lock;
+#endif
 
 /* Initializes the process system */
 void
 process_init (void) 
 {
+#ifndef FS  
   lock_init(&fs_lock);
+#endif
 }
 
 struct arg_elem 
@@ -390,7 +394,10 @@ process_exit (void)
     {
       e = list_pop_front (&cur->file_list);
       struct file_elem* file_elem = list_entry (e, struct file_elem, elem);
+#ifndef FS       
       lock_acquire (&fs_lock);
+#endif
+
 #ifdef FS
       if (file_elem->type == INODE_FILE)
         file_close (file_elem->file);
@@ -399,7 +406,11 @@ process_exit (void)
 #else
       file_close (file_elem->file);
 #endif
+
+#ifndef FS 
       lock_release (&fs_lock);
+#endif
+
       free (file_elem);
     }
 
@@ -415,10 +426,16 @@ process_exit (void)
   // Close the executable file
   if (cur->exec_file != NULL)
     {
+#ifndef FS      
       lock_acquire (&fs_lock);
+#endif
+
       file_allow_write (cur->exec_file);
       file_close (cur->exec_file);
+
+#ifndef FS      
       lock_release (&fs_lock);
+#endif
     }    
 }
 
@@ -501,7 +518,10 @@ process_close_file (int fd)
     
   struct file_elem* fe = list_entry (e, struct file_elem, elem);
 
+#ifndef FS
   lock_acquire (&fs_lock);
+#endif
+
 #ifdef FS  
   if (fe->type == INODE_FILE)
     file_close (fe->file);
@@ -510,7 +530,11 @@ process_close_file (int fd)
 #else
   file_close (fe->file);
 #endif
+
+#ifndef FS
   lock_release (&fs_lock);
+#endif
+
   list_remove (&fe->elem);
   free (fe);
 }
@@ -683,7 +707,10 @@ load (struct list* arg_list, void (**eip) (void), void **esp)
       list_front(arg_list), struct arg_elem, elem)->arg;
 
   /* Open executable file. */
+#ifndef FS  
   lock_acquire(&fs_lock);
+#endif
+
   file = filesys_open (exec_name);
   if (file == NULL) 
     {
@@ -784,7 +811,11 @@ load (struct list* arg_list, void (**eip) (void), void **esp)
   /* We arrive here whether the load is successful or not. */
   if (!success) 
     file_close (file);
+
+#ifndef FS    
   lock_release(&fs_lock);
+#endif
+
   return success;
 }
 

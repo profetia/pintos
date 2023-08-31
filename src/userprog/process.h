@@ -8,7 +8,9 @@
 #include "filesys/inode.h"
 #endif
 
+#ifndef FS
 extern struct lock fs_lock;
+#endif
 
 void process_init (void);
 tid_t process_execute (const char *file_name);

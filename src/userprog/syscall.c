@@ -222,9 +222,17 @@ syscall_create (const char *file, off_t initial_size)
 {
   if (!is_valid_string(file, false)) 
     syscall_exit (-1);
+
+#ifndef FS
   lock_acquire (&fs_lock);
+#endif
+
   bool success = filesys_create(file, initial_size);
+
+#ifndef FS
   lock_release (&fs_lock);
+#endif
+
   return success;
 }
 
@@ -233,9 +241,17 @@ syscall_remove (const char *file)
 {
   if (!is_valid_string(file, false)) 
     syscall_exit (-1);
+
+#ifndef FS
   lock_acquire (&fs_lock);
+#endif
+
   bool success = filesys_remove(file);
+
+#ifndef FS
   lock_release (&fs_lock);
+#endif
+
   return success;
 }
 
@@ -244,7 +260,11 @@ syscall_open (const char *file)
 {
   if (!is_valid_string(file, false)) 
     syscall_exit (-1);
+
+#ifndef FS    
   lock_acquire (&fs_lock);
+#endif
+
 #ifdef FS  
   enum inode_type type;
   void *f;
@@ -258,7 +278,11 @@ syscall_open (const char *file)
 #else
   struct file *f = filesys_open(file);  
 #endif
+
+#ifndef FS
   lock_release (&fs_lock);
+#endif
+
   if (f == NULL) {
     return -1;
   }
@@ -285,9 +309,17 @@ syscall_filesize (int fd)
     syscall_exit(-1);
   }
 #endif  
+
+#ifndef FS 
   lock_acquire (&fs_lock);
+#endif
+
   int size = file_length(f);
+
+#ifndef FS   
   lock_release (&fs_lock);
+#endif
+
   return size;
 }
 
@@ -320,10 +352,17 @@ syscall_read (int fd, void *buffer, unsigned size)
   if (f == NULL) 
     syscall_exit(-1);
 #endif
-  
+
+#ifndef FS   
   lock_acquire (&fs_lock);
+#endif
+
   int bytes_read = file_read(f, buffer, (off_t)size);
+
+#ifndef FS  
   lock_release (&fs_lock);
+#endif
+
   return bytes_read;
 }
 
@@ -354,9 +393,16 @@ syscall_write (int fd, const void *buffer, unsigned size)
     syscall_exit(-1);
 #endif
   
+#ifndef FS
   lock_acquire (&fs_lock);
+#endif
+
   int bytes_written = file_write(f, buffer, (off_t)size);
+
+#ifndef FS 
   lock_release (&fs_lock);
+#endif
+
   return bytes_written;
 }
 
@@ -374,9 +420,16 @@ syscall_seek (int fd, unsigned position)
   if (f == NULL) 
     syscall_exit(-1);
 #endif
+
+#ifndef FS 
   lock_acquire (&fs_lock);
+#endif
+
   file_seek(f, (off_t)position);
+
+#ifndef FS   
   lock_release (&fs_lock);
+#endif
 }
 
 static unsigned
@@ -393,9 +446,17 @@ syscall_tell (int fd)
   if (f == NULL) 
     syscall_exit(-1);
 #endif
+
+#ifndef FS 
   lock_acquire (&fs_lock);
+#endif
+
   unsigned position = file_tell(f);
+
+#ifndef FS 
   lock_release (&fs_lock);
+#endif
+
   return position;
 }
 
@@ -445,9 +506,9 @@ syscall_chdir (const char *name)
 {
   if (!is_valid_string(name, false)) 
     syscall_exit(-1);
-  lock_acquire (&fs_lock);
+  
   bool success = filesys_chdir(name);
-  lock_release (&fs_lock);
+  
   return success;
 }
 
@@ -456,9 +517,9 @@ syscall_mkdir (const char *name)
 {
   if (!is_valid_string(name, false)) 
     syscall_exit(-1);
-  lock_acquire (&fs_lock);
+
   bool success = filesys_mkdir(name);
-  lock_release (&fs_lock);
+
   return success;
 }
 
@@ -473,9 +534,9 @@ syscall_readdir (int fd, char *name)
   }
 
   struct dir *dir = fe->file;
-  lock_acquire (&fs_lock);
+
   bool success = dir_readdir(dir, name);
-  lock_release (&fs_lock);
+
   return success;
 }
 
@@ -497,14 +558,14 @@ syscall_inumber (int fd)
     syscall_exit(-1);
   }
   
-  lock_acquire (&fs_lock);
+
   int inumber;
   if (fe->type == INODE_DIR) {
     inumber = inode_get_inumber(dir_get_inode(fe->file));
   } else {
     inumber = inode_get_inumber(file_get_inode(fe->file));
   }
-  lock_release (&fs_lock);
+
   return inumber;
 }
 
