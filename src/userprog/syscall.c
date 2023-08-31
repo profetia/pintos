@@ -247,7 +247,14 @@ syscall_open (const char *file)
   lock_acquire (&fs_lock);
 #ifdef FS  
   enum inode_type type;
-  void *f = filesys_open(file, &type);
+  void *f;
+  if (filesys_isdir(file)) {
+    type = INODE_DIR;
+    f = filesys_opendir(file);
+  } else {
+    type = INODE_FILE;
+    f = filesys_open(file);
+  }
 #else
   struct file *f = filesys_open(file);  
 #endif

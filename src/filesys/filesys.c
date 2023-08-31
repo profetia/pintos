@@ -214,20 +214,13 @@ filesys_create (const char *name, off_t initial_size)
    otherwise.
    Fails if no file named NAME exists,
    or if an internal memory allocation fails. */
-#ifdef FS
-void*
-filesys_open (const char* name, enum inode_type* type)
-#else
+
 struct file *
 filesys_open (const char *name)
-#endif
 {
 #ifdef FS
-  if (name[0] == '/' && strlen (name) == 1)
-    {
-      if (type != NULL) *type = INODE_DIR;
-      return dir_open_root ();
-    }
+  if (filesys_isdir (name))
+    return NULL;
 
   struct path_elem* pe;
   struct dir *dir = open_path (name, &pe);
@@ -249,20 +242,7 @@ filesys_open (const char *name)
 
   dir_close (dir);
 
-#ifdef FS
-  if (inode == NULL)
-    return NULL;
-
-  if (type != NULL) *type = inode->data.type;
-  if (inode->data.type == INODE_FILE)
-    return file_open (inode);
-  if (inode->data.type == INODE_DIR)
-    return dir_open (inode);
-  
-  NOT_REACHED ();
-#else
   return file_open (inode);
-#endif
 }
 
 /* Deletes the file named NAME.
@@ -296,6 +276,22 @@ filesys_remove (const char *name)
 }
 
 #ifdef FS
+struct dir*
+filesys_opendir (const char *name)
+{
+  if (!filesys_isdir (name))
+    return NULL;
+
+  if (name[0] == '/' && strlen (name) == 1)
+    return dir_open_root ();
+
+  struct dir *dir = open_path (name, NULL);
+  if (dir == NULL)
+    return NULL;
+
+  return dir;
+}
+
 bool 
 filesys_chdir (const char *name)
 {
@@ -339,6 +335,20 @@ filesys_mkdir (const char *name)
   dir_close (dir);
 
   return success;
+}
+
+bool
+filesys_isdir (const char *name)
+{
+  if (name[0] == '/' && strlen (name) == 1)
+    return true;
+
+  struct dir *dir = open_path (name, NULL);
+  if (dir == NULL)
+    return false;
+
+  dir_close (dir);
+  return true;
 }
 #endif
 

@@ -671,7 +671,7 @@ load (struct list* arg_list, void (**eip) (void), void **esp)
 
   /* Open executable file. */
   lock_acquire(&fs_lock);
-  file = filesys_open (exec_name, NULL);
+  file = filesys_open (exec_name);
   if (file == NULL) 
     {
       printf ("load: %s: open failed\n", exec_name);
