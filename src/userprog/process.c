@@ -385,7 +385,14 @@ process_exit (void)
       e = list_pop_front (&cur->file_list);
       struct file_elem* file_elem = list_entry (e, struct file_elem, elem);
       lock_acquire (&fs_lock);
+#ifdef FS
+      if (file_elem->type == INODE_FILE)
+        file_close (file_elem->file);
+      else
+        dir_close (file_elem->file);
+#else
       file_close (file_elem->file);
+#endif
       lock_release (&fs_lock);
       free (file_elem);
     }
