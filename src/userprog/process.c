@@ -241,6 +241,12 @@ start_process (void *init_args_)
     {
       struct thread* cur = thread_current();
       cur->parent = parent;
+#ifdef FS
+      if (parent->current_dir != NULL)
+        cur->current_dir = dir_reopen(parent->current_dir);
+      else
+        cur->current_dir = NULL;
+#endif
       child->pid = cur->tid;
       child->child = cur;
       sema_up(&child->sema);
