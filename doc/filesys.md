@@ -230,14 +230,72 @@ We choose to represent the current directory of a process as a pointer to a dire
 > `struct' member, global or static variable, `typedef', or
 > enumeration.  Identify the purpose of each in 25 words or less.
 
+```c
+// src/filesys/cache.h
+
+...
+
+struct cache_entry 
+  {
+    block_sector_t sector;
+    bool dirty;
+    bool valid;
+    bool accessed;
+    uint8_t data[BLOCK_SECTOR_SIZE];
+    struct lock lock;
+  };
+
+...
+
+// src/filesys/cache.c
+
+...
+
+static struct cache_entry cache[CACHE_SIZE];
+static struct lock cache_lock;
+
+static struct list read_ahead_list;
+static struct lock read_ahead_lock;
+static struct condition read_ahead_cond;
+
+static struct list write_behind_list;
+static struct lock write_behind_lock;
+
+...
+
+```
+
+- `struct cache_entry`: The cache entry.
+    - `sector`: The sector number of the cache entry.
+    - `dirty`: Whether the cache entry is dirty.
+    - `valid`: Whether the cache entry is valid.
+    - `accessed`: Whether the cache entry is accessed.
+    - `data`: The data of the cache entry.
+    - `lock`: The lock of the cache entry.
+
+- `cache`: The cache.
+- `cache_lock`: The lock of the cache.
+- `read_ahead_list`: The list of read-ahead.
+- `read_ahead_lock`: The lock of the list of read-ahead.
+- `read_ahead_cond`: The condition variable of the list of read-ahead.
+- `write_behind_list`: The list of write-behind.
+- `write_behind_lock`: The lock of the list of write-behind.
+
 #### ALGORITHMS 
 
 > C2: Describe how your cache replacement algorithm chooses a cache
 > block to evict.
 
+We use the clock algorithm to choose a cache block to evict. We first check the accessed bit of each cache block. If it is set, we clear it and move to the next cache block. If it is not set, we evict the cache block. If all the accessed bits are set, we evict the first cache block.
+
 > C3: Describe your implementation of write-behind.
 
+A daemon thread is created to write-behind. It will write the dirty cache blocks to disk every `CACHE_FLUSH_INTERVAL` ticks. The daemon thread will
+exit when the file system is shut down.
+
 > C4: Describe your implementation of read-ahead.
+
+A daemon thread is created to read-ahead. A monitor is implemented to synchronize the daemon thread and the other threads. The read-ahead requests are sent to the daemon thread through the monitor. The daemon thread will exit when the file system is shut down.
 
 #### SYNCHRONIZATION 
 
@@ -245,13 +303,19 @@ We choose to represent the current directory of a process as a pointer to a dire
 > buffer cache block, how are other processes prevented from evicting
 > that block?
 
+A lock is used to protect the cache entry. When a process is actively reading or writing data in a buffer cache block, it should first acquire the lock of the cache entry. Then it can safely read or write the data.
+
 > C6: During the eviction of a block from the cache, how are other
 > processes prevented from attempting to access the block?
+
+A lock is used to protect the cache entry. When a process wants to access a block, it should first acquire the lock of the cache entry. Then it can safely access the block.
 
 #### RATIONALE 
 
 > C7: Describe a file workload likely to benefit from buffer caching,
 > and workloads likely to benefit from read-ahead and write-behind.
+
+A file workload likely to benefit from buffer caching is a workload that reads and writes the same data repeatedly. Workloads likely to benefit from read-ahead and write-behind are workloads that read and write data sequentially.
 
                SURVEY QUESTIONS
                ================
