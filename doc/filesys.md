@@ -35,13 +35,6 @@ Lei Huang <huanglei@shanghaitech.edu.cn>
 
 ...
 
-enum inode_type
-  {
-    INODE_FREEMAP,
-    INODE_FILE,
-    INODE_DIR
-  };
-
 struct inode_disk
   {
     ...
@@ -75,14 +68,8 @@ struct indirect_block
 
 ```
 
-- `enum inode_type`: The type of inode.
-    - `INODE_FREEMAP`: The inode is used to store the free map.
-    - `INODE_FILE`: The inode is used to store a file.
-    - `INODE_DIR`: The inode is used to store a directory.
-
 - In `struct inode_disk`:
     - `blocks`: The data blocks of the inode.
-    - `type`: The type of the inode.
     
 - In `struct inode`:
     - `lock`: The lock of the inode.
@@ -139,10 +126,77 @@ Yes, our inode structure is a multilevel index. We choose this particular combin
 > `struct' member, global or static variable, `typedef', or
 > enumeration.  Identify the purpose of each in 25 words or less.
 
+```c
+// src/filesys/inode.h
+
+...
+
+enum inode_type
+  {
+    INODE_FREEMAP,
+    INODE_FILE,
+    INODE_DIR
+  };
+
+struct inode_disk
+  {
+    ...
+    enum inode_type type;               /* File or directory. */
+    ...
+  };
+
+...
+
+// src/userprog/process.h
+
+...
+
+struct file_elem
+  {
+    ...
+    enum inode_type type;
+    void* file;
+    ...
+  }; 
+
+...
+
+// src/thread/thread.h
+
+...
+
+struct thread
+  {
+    ...
+    struct dir* current_dir;            /* Current directory. */
+    ...
+  };
+
+...
+
+```
+
+- `enum inode_type`: The type of inode.
+    - `INODE_FREEMAP`: The inode is used to store the free map.
+    - `INODE_FILE`: The inode is used to store a file.
+    - `INODE_DIR`: The inode is used to store a directory.
+
+- In `struct inode_disk`:
+    - `type`: The type of the inode.
+
+- In `struct file_elem`:
+    - `type`: The type of the file.
+    - `file`: The file.
+
+- In `struct thread`:
+    - `current_dir`: The current directory of the thread.
+
 #### ALGORITHMS 
 
 > B2: Describe your code for traversing a user-specified path.  How
 > do traversals of absolute and relative paths differ?
+
+The user-specified path is first parsed into a list of names. Then the list is traversed from a given directory. If the path is absolute, the given directory is the root directory. If the path is relative, the given directory is the current directory of the current thread. If any name in the path is invalid, the traversal fails.
 
 #### SYNCHRONIZATION 
 
@@ -151,15 +205,21 @@ Yes, our inode structure is a multilevel index. We choose this particular combin
 > should succeed, as should only one of two simultaneous attempts to
 > create a file with the same name, and so on.
 
+A lock is used to protect the directory entries. When a process wants to remove a file, it should first acquire the lock of the directory. Then it can safely remove the file. When a process wants to create a file, it should first acquire the lock of the directory. Then it can safely create the file.
+
 > B5: Does your implementation allow a directory to be removed if it
 > is open by a process or if it is in use as a process's current
 > working directory?  If so, what happens to that process's future
 > file system operations?  If not, how do you prevent it?
 
+Yes, our implementation allows a directory to be removed if it is open by a process or if it is in use as a process's current working directory. If a process's current working directory is removed, its inode will be marked as removed. So its future file system operations will fail. The directory will be freed only when all the processes close it.
+
 #### RATIONALE 
 
 > B6: Explain why you chose to represent the current directory of a
 > process the way you did.
+
+We choose to represent the current directory of a process as a pointer to a directory. And when it is `NULL`, it falls back to the root directory. This is because it is easy to implement. And specifying `NULL` to the root directory is because the initial thread is created before the file system is initialized and cannot access the root directory at that time.
 
                  BUFFER CACHE
                  ============
