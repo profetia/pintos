@@ -6,6 +6,7 @@
 #include "filesys/filesys.h"
 #include "filesys/free-map.h"
 #include "threads/malloc.h"
+#include "lib/kernel/tanc.h"
 
 /* Identifies an inode. */
 #define INODE_MAGIC 0x494e4f44
@@ -15,6 +16,8 @@
 #define INDIRECT_BLOCK_SIZE 127
 #define DOUBLE_INDIRECT_BLOCK_SIZE 127
 #define DOUBLE_INDIRECT_BLOCK_IN_INODE_SIZE 2
+#define NOT_A_SECTOR ((unsigned) -1)
+static char zeros[BLOCK_SECTOR_SIZE];
 
 /* On-disk indirect block.
    Must be exactly BLOCK_SECTOR_SIZE bytes long. */
@@ -46,6 +49,30 @@ struct inode_disk
     unsigned magic;                     /* Magic number. */
     uint32_t unused[110];               /* Not used. */
   };
+
+static struct double_indirect_block_disk_t template_disk_double_indirect_block;
+static struct indirect_block_disk_t template_disk_indirect_block;
+static struct inode_disk template_disk_inode;
+
+inline void template_init(){
+  LOG_INFO(("init disk templates template_init_if_need."));
+  /* init template_disk_double_indirect_block */
+  for(int i = 0;i<DOUBLE_INDIRECT_BLOCK_SIZE;++i)
+    template_disk_double_indirect_block.indirect_block_disk[i] = NOT_A_SECTOR;
+  template_disk_double_indirect_block.magic = DOUBLE_INDIRECT_BLOCK_MAGIC;
+  /* init template_disk_indirect_block */
+  for(int i = 0;i<INDIRECT_BLOCK_SIZE;++i)
+    template_disk_indirect_block.direct_blocks[i] = NOT_A_SECTOR;
+  template_disk_indirect_block.magic = INDIRECT_BLOCK_MAGIC;
+  /* init template_disk_inode */
+  for(int i = 0;i<DOUBLE_INDIRECT_BLOCK_IN_INODE_SIZE;++i)
+    template_disk_inode.double_indirect_block[i] = NOT_A_SECTOR;
+  for(int i = 0;i<DIRECT_BLOCK_SIZE;++i)
+    template_disk_inode.direct_blocks[i] = NOT_A_SECTOR;
+  template_disk_inode.indirect_block = NOT_A_SECTOR;
+  template_disk_inode.length = 0;
+  template_disk_inode.magic = INODE_MAGIC;
+}
 
 /* Returns the number of sectors to allocate for an inode SIZE
    bytes long. */
@@ -91,11 +118,152 @@ byte_to_sector (const struct inode *inode, off_t pos)
    returns the same `struct inode'. */
 static struct list open_inodes;
 
+void direct_block_init_if_need(block_sector_t *sector){
+  ASSERT(sector != NULL);
+  if(*sector == NOT_A_SECTOR){
+    if(!free_map_allocate(1, sector)){
+      /* PANIC("free_map_allocate_if_need: free_map_allocate failed"); */
+      *sector = NOT_A_SECTOR;
+    }
+    block_write(fs_device, *sector, zeros);
+  }
+}
+
+void indirect_block_init_if_need(block_sector_t *sector){
+  ASSERT(sector != NULL);
+  LOG_DEBUG(("indirect_block_init_if_need: sector = %d", *sector));
+  if(*sector == NOT_A_SECTOR){
+    if(!free_map_allocate(1, sector)){
+      /* PANIC("indirect_block_init_if_need: free_map_allocate failed"); */
+      LOG_DEBUG(("indirect_block_init_if_need: free_map_allocate failed"));
+      *sector = NOT_A_SECTOR;
+    }
+    block_write(fs_device, *sector, &template_disk_indirect_block);
+  }
+}
+
+void double_indirect_block_init_if_need(block_sector_t *sector){
+  ASSERT(sector != NULL);
+  LOG_DEBUG(("double_indirect_block_init_if_need: sector = %d", *sector));
+  if(*sector == NOT_A_SECTOR){
+    if(!free_map_allocate(1, sector)){
+      /* PANIC("double_indirect_block_init_if_need: free_map_allocate failed"); */
+      LOG_DEBUG(("double_indirect_block_init_if_need: free_map_allocate failed"));
+      *sector = NOT_A_SECTOR;
+    }
+    block_write(fs_device, *sector, &template_disk_double_indirect_block);
+  }
+}
+/*  Seek the logical_sector in the inode_disk, return the physical_sector 
+    and try to create all the necessary blocks if need and write new indirect tables to the disk. 
+    The root node, (ie. inode) won't be written to the disk. This should be done manually.
+    This function should be called with aquiring locks of inode_disk and indirect blocks. 
+    return NOT_A_SECTOR if failed.
+    feature:
+      - Support large sparse files. (theoretically, 2TiB)
+      - Support large files. (theoretically, 2TiB)
+      - Try to create all the necessary blocks if need
+    caveats:
+      - All indirect/double indirect blocks should be first created in this function.
+      - The inode_disk should be written to the disk after this function.
+    deficiency:
+      - poor performance since frequent access to disks. (may be relieved by caching)
+      - complex integer division and modulo calculation.
+      - This function is not thread safe.
+*/
+block_sector_t inode_seek (struct inode_disk * inode_disk, block_sector_t logical_sector){
+  block_sector_t physical_sector = NOT_A_SECTOR;
+  LOG_DEBUG(("inode_seek: logical_sector = %d", logical_sector));
+  /* seek in direct blocks */
+  if(logical_sector < DIRECT_BLOCK_SIZE){
+    LOG_DEBUG(("inode_seek: seek in direct blocks"));
+    direct_block_init_if_need(&inode_disk->direct_blocks[logical_sector]);
+    LOG_DEBUG(("seeking sucess! inode_seek: physical_sector = %d", inode_disk->direct_blocks[logical_sector]));
+    return inode_disk->direct_blocks[logical_sector];
+  }
+  /* seek in indirect blocks */
+  if(logical_sector < INDIRECT_BLOCK_SIZE + DIRECT_BLOCK_SIZE){
+    LOG_DEBUG(("inode_seek: seek in indirect blocks"));
+    /* init indirect block if need */
+    indirect_block_init_if_need(&inode_disk->indirect_block);
+    if(inode_disk->indirect_block == NOT_A_SECTOR)
+      return NOT_A_SECTOR;
+    struct indirect_block_disk_t *disk_indirect_block = NULL;
+    disk_indirect_block = calloc (1, sizeof *disk_indirect_block);
+    /* read indirect block from disk */
+    block_read(fs_device, inode_disk->indirect_block, disk_indirect_block);
+    //TODO: caching indirect block
+    /* init direct block if need */
+    direct_block_init_if_need(&disk_indirect_block->direct_blocks[logical_sector - DIRECT_BLOCK_SIZE]);
+    LOG_DEBUG(("seeking success! physical_sector = %d", disk_indirect_block->direct_blocks[logical_sector - DIRECT_BLOCK_SIZE]));
+    return disk_indirect_block->direct_blocks[logical_sector - DIRECT_BLOCK_SIZE];
+  }
+  /* seek in double indirect blocks */
+  LOG_DEBUG(("inode_seek: seek in double indirect blocks"));
+
+  unsigned long double_indirect_block_index = (logical_sector - INDIRECT_BLOCK_SIZE - DIRECT_BLOCK_SIZE) 
+                                              /
+                                              (INDIRECT_BLOCK_SIZE * DOUBLE_INDIRECT_BLOCK_SIZE);
+  unsigned long indirect_block_index = (logical_sector - INDIRECT_BLOCK_SIZE - DIRECT_BLOCK_SIZE) 
+                                       %
+                                       (INDIRECT_BLOCK_SIZE * DOUBLE_INDIRECT_BLOCK_SIZE)
+                                       /
+                                        INDIRECT_BLOCK_SIZE;
+                                       ;
+  unsigned long direct_block_index = (logical_sector - INDIRECT_BLOCK_SIZE - DIRECT_BLOCK_SIZE) 
+                                     %
+                                     (INDIRECT_BLOCK_SIZE * DOUBLE_INDIRECT_BLOCK_SIZE)
+                                     %
+                                      INDIRECT_BLOCK_SIZE;
+                                      /* equal to (logical_sector - INDIRECT_BLOCK_SIZE - DIRECT_BLOCK_SIZE) % INDIRECT_BLOCK_SIZE */
+  
+  LOG_DEBUG(("inode_seek: double_indirect_block_index = %lu", double_indirect_block_index));
+  LOG_DEBUG(("inode_seek: indirect_block_index = %lu", indirect_block_index));
+  LOG_DEBUG(("inode_seek: direct_block_index = %lu", direct_block_index));
+  if(double_indirect_block_index >= DOUBLE_INDIRECT_BLOCK_IN_INODE_SIZE){
+    LOG_INFO(("inode_seek: logical_sector is too large"));
+    return NOT_A_SECTOR;
+  }
+
+  /* init double indirect block if need */
+  double_indirect_block_init_if_need(&inode_disk->double_indirect_block[double_indirect_block_index]);
+  if(inode_disk->double_indirect_block[double_indirect_block_index] == NOT_A_SECTOR)
+    return NOT_A_SECTOR;
+
+  /* read double indirect block from disk */
+  struct double_indirect_block_disk_t *disk_double_indirect_block = NULL;
+  disk_double_indirect_block = calloc (1, sizeof *disk_double_indirect_block);
+  block_read(fs_device, inode_disk->double_indirect_block[double_indirect_block_index], disk_double_indirect_block);
+  //TODO: caching double indirect block
+
+  /* init indirect block if need */
+  indirect_block_init_if_need(&disk_double_indirect_block->indirect_block_disk[indirect_block_index]);
+  if(disk_double_indirect_block->indirect_block_disk[indirect_block_index] == NOT_A_SECTOR)
+    return NOT_A_SECTOR;
+
+  /* read indirect block from disk */
+  struct indirect_block_disk_t *disk_indirect_block = NULL;
+  disk_indirect_block = calloc (1, sizeof *disk_indirect_block);
+  block_read(fs_device, disk_double_indirect_block->indirect_block_disk[indirect_block_index], disk_indirect_block);
+  //TODO: caching indirect block
+
+  /* init the direct block in the indirect block if need */
+  direct_block_init_if_need(&disk_indirect_block->direct_blocks[direct_block_index]);
+
+  LOG_DEBUG(("seeking success! physical_sector = %d", disk_double_indirect_block->indirect_block_disk[indirect_block_index]));
+  return disk_double_indirect_block->indirect_block_disk[indirect_block_index];
+
+  // /* logical_sector is too large */
+  // LOG_INFO(("inode_seek: logical_sector is too large"));
+  // return NOT_A_SECTOR;
+}
+
 /* Initializes the inode module. */
 void
 inode_init (void) 
 {
   list_init (&open_inodes);
+  template_init();
 }
 
 /* Allocate a new indirect block and write it to sector SECTOR
@@ -109,7 +277,7 @@ bool indirect_node_create(block_sector_t sector, off_t length)
   /* If this assertion fails, the indirect block structure is not exactly
      one sector in size, and you should fix that. */
   ASSERT (sizeof *disk_indirect_block == BLOCK_SECTOR_SIZE);
-  static char zeros[BLOCK_SECTOR_SIZE];
+
 
   disk_indirect_block = calloc (1, sizeof *disk_indirect_block);
   if (disk_indirect_block != NULL)
@@ -389,6 +557,8 @@ inode_read_at (struct inode *inode, void *buffer_, off_t size, off_t offset)
   uint8_t *buffer = buffer_;
   off_t bytes_read = 0;
   uint8_t *bounce = NULL;
+  if (offset + size > inode->data.length)
+    size = inode->data.length - offset;
 
   while (size > 0) 
     {
