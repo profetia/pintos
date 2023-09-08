@@ -247,6 +247,35 @@
             "options": {
                 "cwd": "${workspaceFolder}/src/filesys/build"
             }
+        },
+        {
+            "label": "[P4] Run filesys test in GDB mode",
+            "type": "shell",
+            "isBackground": true,
+            "problemMatcher": [
+                {
+                    "pattern": [
+                        {
+                            "regexp": ".",
+                            "file": 1,
+                            "location": 2,
+                            "message": 3
+                        }
+                    ],
+                    "background": {
+                        "activeOnStart": true,
+                        "beginsPattern": ".",
+                        "endsPattern": ".",
+                    }
+                }
+            ],
+            "dependsOn": [
+                "[P4] compile"
+            ],
+            "command": "pintos -v -k -T 60 --qemu --gdb --filesys-size=2 -p tests/filesys/${input:prog_name} -a ${input:prog_name} -- -q  -f run '${input:args}'",
+            "options": {
+                "cwd": "${workspaceFolder}/src/filesys/build"
+            }
         },         
         {
             "label": "[P2] Run exec-arg",

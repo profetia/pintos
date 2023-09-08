@@ -353,6 +353,40 @@
                 "loadAll": true,
                 "exceptionList": ""
             }
+        },
+        {
+            "name": "[P4] Debug a filesys test",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/filesys/build/kernel.o",
+            "preLaunchTask": "[P4] Run filesys test in GDB mode",
+            "miDebuggerServerAddress": "127.0.0.1:1234",
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/src",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                },
+                {
+                    "text": "source -v ${workspaceFolder}/src/misc/gdb-macros",
+                    "description": "Import Pintos GDB macros file",
+                    "ignoreFailures": false
+                },
+                {
+                    "text": "loadusersymbols ${workspaceFolder}/src/filesys/build/tests/userprog/${input:test_name}",
+                    "description": "Import user program",
+                    "ignoreFailures": false
+                }
+            ],
+            "symbolLoadInfo": {
+                "loadAll": true,
+                "exceptionList": ""
+            }
         },   
     ],
     "inputs": [
