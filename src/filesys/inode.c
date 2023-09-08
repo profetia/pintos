@@ -189,11 +189,12 @@ block_sector_t inode_seek (struct inode_disk * inode_disk, block_sector_t logica
     //TODO: caching indirect block
     /* init direct block if need */
     bool write_back_disk_indirect_block = direct_block_init_if_need(&disk_indirect_block->direct_blocks[logical_sector - DIRECT_BLOCK_SIZE]);
-    LOG_DEBUG(("seeking success! physical_sector = %d", disk_indirect_block->direct_blocks[logical_sector - DIRECT_BLOCK_SIZE]));
+    block_sector_t physical_sector = disk_indirect_block->direct_blocks[logical_sector - DIRECT_BLOCK_SIZE];
+    LOG_DEBUG(("seeking success! physical_sector = %d", physical_sector));
     if(write_back_disk_indirect_block)
       block_write(fs_device, inode_disk->indirect_block, disk_indirect_block);
     free(disk_indirect_block);
-    return disk_indirect_block->direct_blocks[logical_sector - DIRECT_BLOCK_SIZE];
+    return physical_sector;
   }
   /* seek in double indirect blocks */
   LOG_DEBUG(("inode_seek: seek in double indirect blocks"));
@@ -253,10 +254,12 @@ block_sector_t inode_seek (struct inode_disk * inode_disk, block_sector_t logica
   if(write_back_disk_double_indirect_block)
     block_write(fs_device, inode_disk->double_indirect_block[double_indirect_block_index], disk_double_indirect_block);
 
+  block_sector_t physical_sector = disk_indirect_block->direct_blocks[direct_block_index];
+
   free(disk_double_indirect_block);
   free(disk_indirect_block);
-  LOG_DEBUG(("seeking success! physical_sector = %d", disk_double_indirect_block->indirect_block_disk[indirect_block_index]));
-  return disk_double_indirect_block->indirect_block_disk[indirect_block_index];
+  LOG_DEBUG(("seeking success! physical_sector = %d", physical_sector));
+  return physical_sector;
 
   // /* logical_sector is too large */
   // LOG_INFO(("inode_seek: logical_sector is too large"));
