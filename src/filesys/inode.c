@@ -528,6 +528,7 @@ inode_close (struct inode *inode)
 
         free(double_indirect_block_disk);
         free(indirect_block_disk);
+        free_map_release (inode->sector, 1);
       }
       else { /* not removed, excute write back */
         block_write(fs_device, inode->sector, &inode->data);
