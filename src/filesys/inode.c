@@ -611,10 +611,21 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
   if (size == 0)
     return 0;
   bounce = malloc (BLOCK_SECTOR_SIZE);
-
-  /* write all the sectors */
+  /* write the first sector */
   block_sector_t first = offset / BLOCK_SECTOR_SIZE;
+  block_sector_t sector_idx = inode_seek(&inode->data, first);
+  if(sector_idx == NOT_A_SECTOR)
+    return 0;
+  block_read(fs_device, sector_idx, bounce);
+  int sector_ofs = offset % BLOCK_SECTOR_SIZE;
+  int sector_left = BLOCK_SECTOR_SIZE - sector_ofs;
+  int chunk_size = size < sector_left ? size : sector_left;
+  memcpy(bounce + sector_ofs, buffer + bytes_written, chunk_size);
+  block_write (fs_device, sector_idx, bounce);
+  bytes_written += chunk_size;
+  /* write the rest sectors */
   int logical_sector_cnt = 0;
+  ++ logical_sector_cnt;
 
   while (bytes_written < size){
     block_sector_t sector_idx = inode_seek(&inode->data, first + logical_sector_cnt);
