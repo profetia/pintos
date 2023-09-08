@@ -5,6 +5,7 @@
 #include <string.h>
 #include "filesys/filesys.h"
 #include "filesys/free-map.h"
+#include "stdbool.h"
 #include "threads/malloc.h"
 #include "lib/kernel/tanc.h"
 
@@ -52,7 +53,7 @@ static struct double_indirect_block_disk_t template_disk_double_indirect_block;
 static struct indirect_block_disk_t template_disk_indirect_block;
 static struct inode_disk template_disk_inode;
 
-inline void template_init(){
+void template_init(){
   LOG_INFO(("init disk templates template_init_if_need."));
   /* init template_disk_double_indirect_block */
   for(int i = 0;i<DOUBLE_INDIRECT_BLOCK_SIZE;++i)
@@ -103,18 +104,21 @@ struct inode
    returns the same `struct inode'. */
 static struct list open_inodes;
 
-void direct_block_init_if_need(block_sector_t *sector){
+bool direct_block_init_if_need(block_sector_t *sector){
   ASSERT(sector != NULL);
   if(*sector == NOT_A_SECTOR){
     if(!free_map_allocate(1, sector)){
       /* PANIC("free_map_allocate_if_need: free_map_allocate failed"); */
       *sector = NOT_A_SECTOR;
+      return false;
     }
     block_write(fs_device, *sector, zeros);
+    return true;
   }
+  return false;
 }
 
-void indirect_block_init_if_need(block_sector_t *sector){
+bool indirect_block_init_if_need(block_sector_t *sector){
   ASSERT(sector != NULL);
   LOG_DEBUG(("indirect_block_init_if_need: sector = %d", *sector));
   if(*sector == NOT_A_SECTOR){
@@ -122,12 +126,15 @@ void indirect_block_init_if_need(block_sector_t *sector){
       /* PANIC("indirect_block_init_if_need: free_map_allocate failed"); */
       LOG_DEBUG(("indirect_block_init_if_need: free_map_allocate failed"));
       *sector = NOT_A_SECTOR;
+      return false;
     }
     block_write(fs_device, *sector, &template_disk_indirect_block);
+    return true;
   }
+  return false;
 }
 
-void double_indirect_block_init_if_need(block_sector_t *sector){
+bool double_indirect_block_init_if_need(block_sector_t *sector){
   ASSERT(sector != NULL);
   LOG_DEBUG(("double_indirect_block_init_if_need: sector = %d", *sector));
   if(*sector == NOT_A_SECTOR){
@@ -135,9 +142,12 @@ void double_indirect_block_init_if_need(block_sector_t *sector){
       /* PANIC("double_indirect_block_init_if_need: free_map_allocate failed"); */
       LOG_DEBUG(("double_indirect_block_init_if_need: free_map_allocate failed"));
       *sector = NOT_A_SECTOR;
+      return false;
     }
     block_write(fs_device, *sector, &template_disk_double_indirect_block);
+    return true;
   }
+  return false;
 }
 /*  Seek the logical_sector in the inode_disk, return the physical_sector 
     and try to create all the necessary blocks if need and write new indirect tables to the disk. 
@@ -157,7 +167,6 @@ void double_indirect_block_init_if_need(block_sector_t *sector){
       - This function is not thread safe.
 */
 block_sector_t inode_seek (struct inode_disk * inode_disk, block_sector_t logical_sector){
-  block_sector_t physical_sector = NOT_A_SECTOR;
   LOG_DEBUG(("inode_seek: logical_sector = %d", logical_sector));
   /* seek in direct blocks */
   if(logical_sector < DIRECT_BLOCK_SIZE){
@@ -179,8 +188,11 @@ block_sector_t inode_seek (struct inode_disk * inode_disk, block_sector_t logica
     block_read(fs_device, inode_disk->indirect_block, disk_indirect_block);
     //TODO: caching indirect block
     /* init direct block if need */
-    direct_block_init_if_need(&disk_indirect_block->direct_blocks[logical_sector - DIRECT_BLOCK_SIZE]);
+    bool write_back_disk_indirect_block = direct_block_init_if_need(&disk_indirect_block->direct_blocks[logical_sector - DIRECT_BLOCK_SIZE]);
     LOG_DEBUG(("seeking success! physical_sector = %d", disk_indirect_block->direct_blocks[logical_sector - DIRECT_BLOCK_SIZE]));
+    if(write_back_disk_indirect_block)
+      block_write(fs_device, inode_disk->indirect_block, disk_indirect_block);
+    free(disk_indirect_block);
     return disk_indirect_block->direct_blocks[logical_sector - DIRECT_BLOCK_SIZE];
   }
   /* seek in double indirect blocks */
@@ -222,9 +234,11 @@ block_sector_t inode_seek (struct inode_disk * inode_disk, block_sector_t logica
   //TODO: caching double indirect block
 
   /* init indirect block if need */
-  indirect_block_init_if_need(&disk_double_indirect_block->indirect_block_disk[indirect_block_index]);
-  if(disk_double_indirect_block->indirect_block_disk[indirect_block_index] == NOT_A_SECTOR)
+  bool write_back_disk_double_indirect_block = indirect_block_init_if_need(&disk_double_indirect_block->indirect_block_disk[indirect_block_index]);
+  if(disk_double_indirect_block->indirect_block_disk[indirect_block_index] == NOT_A_SECTOR){
+    free(disk_double_indirect_block);
     return NOT_A_SECTOR;
+  }
 
   /* read indirect block from disk */
   struct indirect_block_disk_t *disk_indirect_block = NULL;
@@ -233,8 +247,14 @@ block_sector_t inode_seek (struct inode_disk * inode_disk, block_sector_t logica
   //TODO: caching indirect block
 
   /* init the direct block in the indirect block if need */
-  direct_block_init_if_need(&disk_indirect_block->direct_blocks[direct_block_index]);
+  bool write_back_disk_indirect_block = direct_block_init_if_need(&disk_indirect_block->direct_blocks[direct_block_index]);
+  if(write_back_disk_indirect_block)
+    block_write(fs_device, disk_double_indirect_block->indirect_block_disk[indirect_block_index], disk_indirect_block);
+  if(write_back_disk_double_indirect_block)
+    block_write(fs_device, inode_disk->double_indirect_block[double_indirect_block_index], disk_double_indirect_block);
 
+  free(disk_double_indirect_block);
+  free(disk_indirect_block);
   LOG_DEBUG(("seeking success! physical_sector = %d", disk_double_indirect_block->indirect_block_disk[indirect_block_index]));
   return disk_double_indirect_block->indirect_block_disk[indirect_block_index];
 
@@ -304,7 +324,6 @@ bool double_indirect_node_create (block_sector_t sector, off_t length)
   /* If this assertion fails, the indirect block structure is not exactly
      one sector in size, and you should fix that. */
   ASSERT (sizeof *disk_double_indirect_block == BLOCK_SECTOR_SIZE);
-  static char zeros[BLOCK_SECTOR_SIZE];
 
   disk_double_indirect_block = calloc (1, sizeof *disk_double_indirect_block);
   if (disk_double_indirect_block != NULL)
