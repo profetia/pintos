@@ -45,8 +45,9 @@ struct inode_disk
     block_sector_t direct_blocks[12];  /* Direct blocks. */
     block_sector_t indirect_block;      /* Indirect block. */
     block_sector_t double_indirect_block[2]; /* Double indirect block. */
+    bool isdir;                         /* Is a directory or not. default: not. */
     unsigned magic;                     /* Magic number. */
-    uint32_t unused[111];               /* Not used. */
+    uint32_t unused[110];               /* Not used. */
   };
 
 static struct double_indirect_block_disk_t template_disk_double_indirect_block;
@@ -70,6 +71,7 @@ void template_init(){
     template_disk_inode.direct_blocks[i] = NOT_A_SECTOR;
   template_disk_inode.indirect_block = NOT_A_SECTOR;
   template_disk_inode.length = 0;
+  template_disk_inode.isdir = false;
   template_disk_inode.magic = INODE_MAGIC;
 }
 
@@ -372,7 +374,7 @@ bool double_indirect_node_create (block_sector_t sector, off_t length)
    Returns true if successful.
    Returns false if memory or disk allocation fails. */
 bool
-inode_create (block_sector_t sector, off_t length)
+inode_create (block_sector_t sector, off_t length, bool isdir)
 {
   struct inode_disk *disk_inode = NULL;
 
@@ -391,6 +393,7 @@ inode_create (block_sector_t sector, off_t length)
   size_t sectors = bytes_to_sectors (length);
   disk_inode->length = length;
   disk_inode->magic = INODE_MAGIC;
+  disk_inode->isdir = isdir;
   /* creates all nodes by inode_seek */
   for(int i = 0; i < sectors; i++){
       block_sector_t physical_sector = inode_seek(disk_inode, i);
