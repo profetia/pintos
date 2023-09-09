@@ -165,7 +165,7 @@ syscall_exec (const char *cmd_line)
 {
   if (!is_valid_string(cmd_line, false)) 
     syscall_exit(-1);
-  return process_execute(cmd_line);
+  return process_execute(cmd_line,thread_current()->cwd_fd);
 }
 
 static int

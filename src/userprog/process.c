@@ -68,7 +68,7 @@ struct start_process_args
    before process_execute() returns.  Returns the new process's
    thread id, or TID_ERROR if the thread cannot be created. */
 tid_t
-process_execute (const char *file_name) 
+process_execute (const char *file_name, int cwd_fd) 
 {
   struct list* arg_list;
   tid_t tid;
@@ -113,7 +113,7 @@ process_execute (const char *file_name)
   lock_release (&cur->child_lock);  
 
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (exec_name, PRI_DEFAULT, start_process, init_args);
+  tid = thread_create (exec_name, PRI_DEFAULT, start_process, init_args, cwd_fd);
   if (tid == TID_ERROR)
     {
       cleanup_args(arg_list);
