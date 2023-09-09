@@ -54,6 +54,12 @@ static struct double_indirect_block_disk_t template_disk_double_indirect_block;
 static struct indirect_block_disk_t template_disk_indirect_block;
 static struct inode_disk template_disk_inode;
 
+void template_init(void);
+bool direct_block_init_if_need(block_sector_t *sector);
+bool indirect_block_init_if_need(block_sector_t *sector);
+bool double_indirect_block_init_if_need(block_sector_t *sector);
+block_sector_t inode_seek (struct inode_disk * inode_disk, block_sector_t logical_sector);
+
 void template_init(){
   LOG_INFO(("init disk templates template_init_if_need."));
   /* init template_disk_double_indirect_block */
