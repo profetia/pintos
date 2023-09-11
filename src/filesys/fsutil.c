@@ -10,6 +10,7 @@
 #include "threads/malloc.h"
 #include "threads/palloc.h"
 #include "threads/vaddr.h"
+#include "threads/thread.h"
 
 /* List files in the root directory. */
 void
@@ -39,7 +40,8 @@ fsutil_cat (char **argv)
   char *buffer;
 
   printf ("Printing '%s' to the console...\n", file_name);
-  file = filesys_open (file_name);
+  printf ("cwd_fd: %d\n", thread_current()->cwd_fd);
+  file = filesys_open (file_name, thread_current()->cwd_fd);
   if (file == NULL)
     PANIC ("%s: open failed", file_name);
   buffer = palloc_get_page (PAL_ASSERT);
@@ -63,7 +65,8 @@ fsutil_rm (char **argv)
   const char *file_name = argv[1];
   
   printf ("Deleting '%s'...\n", file_name);
-  if (!filesys_remove (file_name))
+  printf ("cwd_fd: %d\n", thread_current()->cwd_fd);
+  if (!filesys_remove (file_name, thread_current()->cwd_fd))
     PANIC ("%s: delete failed\n", file_name);
 }
 
@@ -120,7 +123,7 @@ fsutil_extract (char **argv UNUSED)
           /* Create destination file. */
           if (!filesys_create (file_name, size))
             PANIC ("%s: create failed", file_name);
-          dst = filesys_open (file_name);
+          dst = filesys_open (file_name, thread_current()->cwd_fd);
           if (dst == NULL)
             PANIC ("%s: open failed", file_name);
 
@@ -182,7 +185,7 @@ fsutil_append (char **argv)
     PANIC ("couldn't allocate buffer");
 
   /* Open source file. */
-  src = filesys_open (file_name);
+  src = filesys_open (file_name, thread_current()->cwd_fd);
   if (src == NULL)
     PANIC ("%s: open failed", file_name);
   size = file_length (src);

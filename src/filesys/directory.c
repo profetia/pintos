@@ -25,9 +25,24 @@ struct dir_entry
 /* Creates a directory with space for ENTRY_CNT entries in the
    given SECTOR.  Returns true if successful, false on failure. */
 bool
-dir_create (block_sector_t sector, size_t entry_cnt)
+dir_create (block_sector_t sector, size_t entry_cnt, block_sector_t parent_sector)
 {
   bool success = inode_create (sector, entry_cnt * sizeof (struct dir_entry),true);
+  if(success){
+    /* add . */
+    struct inode *inode = inode_open(sector);
+    struct dir_entry * e = calloc(1,sizeof(struct dir_entry));
+    if(inode == NULL || e == NULL)
+      return false;
+    e->inode_sector = sector;
+    e->in_use = true;
+    strlcpy(e->name,".",sizeof(e->name));
+    inode_write_at(inode,e,sizeof(struct dir_entry),0);
+    /* add .. */
+    e->inode_sector = parent_sector;
+    strlcpy(e->name,"..",sizeof(e->name));
+    inode_write_at(inode,e,sizeof(struct dir_entry),sizeof(struct dir_entry));
+  }
   return success;
 }
 

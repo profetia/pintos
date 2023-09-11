@@ -10,6 +10,12 @@
 /* Partition that contains the file system. */
 struct block *fs_device;
 
+/* this is a function for hints. this function won't be called.*/
+block_sector_t fd_to_sector(int fd){
+  /* defined so. in this filesys the inode sector number is the filesystem descriptor */
+  return fd;
+}
+
 static void do_format (void);
 
 /* Initializes the file system module.
@@ -63,9 +69,11 @@ filesys_create (const char *name, off_t initial_size)
    Fails if no file named NAME exists,
    or if an internal memory allocation fails. */
 struct file *
-filesys_open (const char *name)
+filesys_open (const char *name, int cwd_fd)
 {
-  struct dir *dir = dir_open_root ();
+  struct dir *dir = dir_open(inode_open(cwd_fd));
+  if(dir == NULL)
+    return NULL;
   struct inode *inode = NULL;
 
   if (dir != NULL)
@@ -80,9 +88,10 @@ filesys_open (const char *name)
    Fails if no file named NAME exists,
    or if an internal memory allocation fails. */
 bool
-filesys_remove (const char *name) 
+filesys_remove (const char *name, int cwd_fd) 
 {
-  struct dir *dir = dir_open_root ();
+  struct dir *dir = dir_open(inode_open(cwd_fd));
+  if(dir == NULL) return false;
   bool success = dir != NULL && dir_remove (dir, name);
   dir_close (dir); 
 
@@ -95,7 +104,7 @@ do_format (void)
 {
   printf ("Formatting file system...");
   free_map_create ();
-  if (!dir_create (ROOT_DIR_SECTOR, 16))
+  if (!dir_create (ROOT_DIR_SECTOR, 16, ROOT_DIR_SECTOR))
     PANIC ("root directory creation failed");
   free_map_close ();
   printf ("done.\n");
