@@ -128,11 +128,11 @@ bool direct_block_init_if_need(block_sector_t *sector){
 
 bool indirect_block_init_if_need(block_sector_t *sector){
   ASSERT(sector != NULL);
-  LOG_DEBUG(("indirect_block_init_if_need: sector = %d", *sector));
+  LOG_TRACE(("indirect_block_init_if_need: sector = %d", *sector));
   if(*sector == NOT_A_SECTOR){
     if(!free_map_allocate(1, sector)){
       /* PANIC("indirect_block_init_if_need: free_map_allocate failed"); */
-      LOG_DEBUG(("indirect_block_init_if_need: free_map_allocate failed"));
+      LOG_TRACE(("indirect_block_init_if_need: free_map_allocate failed"));
       *sector = NOT_A_SECTOR;
       return false;
     }
@@ -144,11 +144,11 @@ bool indirect_block_init_if_need(block_sector_t *sector){
 
 bool double_indirect_block_init_if_need(block_sector_t *sector){
   ASSERT(sector != NULL);
-  LOG_DEBUG(("double_indirect_block_init_if_need: sector = %d", *sector));
+  LOG_TRACE(("double_indirect_block_init_if_need: sector = %d", *sector));
   if(*sector == NOT_A_SECTOR){
     if(!free_map_allocate(1, sector)){
       /* PANIC("double_indirect_block_init_if_need: free_map_allocate failed"); */
-      LOG_DEBUG(("double_indirect_block_init_if_need: free_map_allocate failed"));
+      LOG_TRACE(("double_indirect_block_init_if_need: free_map_allocate failed"));
       *sector = NOT_A_SECTOR;
       return false;
     }
@@ -175,17 +175,17 @@ bool double_indirect_block_init_if_need(block_sector_t *sector){
       - This function is not thread safe.
 */
 block_sector_t inode_seek (struct inode_disk * inode_disk, block_sector_t logical_sector){
-  LOG_DEBUG(("inode_seek: logical_sector = %d", logical_sector));
+  LOG_TRACE(("inode_seek: logical_sector = %d", logical_sector));
   /* seek in direct blocks */
   if(logical_sector < DIRECT_BLOCK_SIZE){
-    LOG_DEBUG(("inode_seek: seek in direct blocks"));
+    LOG_TRACE(("inode_seek: seek in direct blocks"));
     direct_block_init_if_need(&inode_disk->direct_blocks[logical_sector]);
-    LOG_DEBUG(("seeking sucess! inode_seek: physical_sector = %d", inode_disk->direct_blocks[logical_sector]));
+    LOG_TRACE(("seeking sucess! inode_seek: physical_sector = %d", inode_disk->direct_blocks[logical_sector]));
     return inode_disk->direct_blocks[logical_sector];
   }
   /* seek in indirect blocks */
   if(logical_sector < INDIRECT_BLOCK_SIZE + DIRECT_BLOCK_SIZE){
-    LOG_DEBUG(("inode_seek: seek in indirect blocks"));
+    LOG_TRACE(("inode_seek: seek in indirect blocks"));
     /* init indirect block if need */
     indirect_block_init_if_need(&inode_disk->indirect_block);
     if(inode_disk->indirect_block == NOT_A_SECTOR)
@@ -198,14 +198,14 @@ block_sector_t inode_seek (struct inode_disk * inode_disk, block_sector_t logica
     /* init direct block if need */
     bool write_back_disk_indirect_block = direct_block_init_if_need(&disk_indirect_block->direct_blocks[logical_sector - DIRECT_BLOCK_SIZE]);
     block_sector_t physical_sector = disk_indirect_block->direct_blocks[logical_sector - DIRECT_BLOCK_SIZE];
-    LOG_DEBUG(("seeking success! physical_sector = %d", physical_sector));
+    LOG_TRACE(("seeking success! physical_sector = %d", physical_sector));
     if(write_back_disk_indirect_block)
       block_write(fs_device, inode_disk->indirect_block, disk_indirect_block);
     free(disk_indirect_block);
     return physical_sector;
   }
   /* seek in double indirect blocks */
-  LOG_DEBUG(("inode_seek: seek in double indirect blocks"));
+  LOG_TRACE(("inode_seek: seek in double indirect blocks"));
 
   unsigned long double_indirect_block_index = (logical_sector - INDIRECT_BLOCK_SIZE - DIRECT_BLOCK_SIZE) 
                                               /
@@ -223,9 +223,9 @@ block_sector_t inode_seek (struct inode_disk * inode_disk, block_sector_t logica
                                       INDIRECT_BLOCK_SIZE;
                                       /* equal to (logical_sector - INDIRECT_BLOCK_SIZE - DIRECT_BLOCK_SIZE) % INDIRECT_BLOCK_SIZE */
   
-  LOG_DEBUG(("inode_seek: double_indirect_block_index = %lu", double_indirect_block_index));
-  LOG_DEBUG(("inode_seek: indirect_block_index = %lu", indirect_block_index));
-  LOG_DEBUG(("inode_seek: direct_block_index = %lu", direct_block_index));
+  LOG_TRACE(("inode_seek: double_indirect_block_index = %lu", double_indirect_block_index));
+  LOG_TRACE(("inode_seek: indirect_block_index = %lu", indirect_block_index));
+  LOG_TRACE(("inode_seek: direct_block_index = %lu", direct_block_index));
   if(double_indirect_block_index >= DOUBLE_INDIRECT_BLOCK_IN_INODE_SIZE){
     LOG_INFO(("inode_seek: logical_sector is too large"));
     return NOT_A_SECTOR;
@@ -266,7 +266,7 @@ block_sector_t inode_seek (struct inode_disk * inode_disk, block_sector_t logica
 
   free(disk_double_indirect_block);
   free(disk_indirect_block);
-  LOG_DEBUG(("seeking success! physical_sector = %d", physical_sector));
+  LOG_TRACE(("seeking success! physical_sector = %d", physical_sector));
   return physical_sector;
 
   // /* logical_sector is too large */
