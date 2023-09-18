@@ -202,6 +202,7 @@ syscall_open (const char *file)
   if (!is_valid_string(file, false)) 
     syscall_exit (-1);
   lock_acquire (&fs_lock);
+  LOG_DEBUG(("syscall_open: %s",file));
   struct file *f = filesys_open(file,thread_current()->cwd_fd);
   lock_release (&fs_lock);
   if (f == NULL) {
