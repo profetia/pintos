@@ -100,7 +100,7 @@ dir_get_inode (struct dir *dir)
   return dir->inode;
 }
 
-/* Searches DIR for a file with the given NAME.
+/* Searches DIR for a file with the given NAME. NAME shouldn't be a path.
    If successful, returns true, sets *EP to the directory entry
    if EP is non-null, and sets *OFSP to the byte offset of the
    directory entry if OFSP is non-null.
@@ -250,4 +250,16 @@ dir_readdir (struct dir *dir, char name[NAME_MAX + 1])
         } 
     }
   return false;
+}
+
+bool dir_is_empty(struct dir * dir){
+  struct dir_entry e;
+  off_t ofs;
+  for (ofs = 0; inode_read_at (dir->inode, &e, sizeof e, ofs) == sizeof e;
+       ofs += sizeof e){
+    if(e.in_use && strcmp(e.name,".") != 0 && strcmp(e.name,"..") != 0){
+      return false;
+    }
+  }
+  return true;
 }
