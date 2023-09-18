@@ -600,3 +600,23 @@ inode_length (const struct inode *inode)
 {
   return inode->data.length;
 }
+
+bool inode_is_dir(const struct inode *inode){
+  /* assert inode is not null and indeed an inode*/
+  ASSERT(inode != NULL);
+  ASSERT(inode->data.magic == INODE_MAGIC);
+  return inode->data.isdir;
+}
+
+bool inode_is_removed(const struct inode *inode){
+  ASSERT(inode != NULL);
+  ASSERT(inode->data.magic == INODE_MAGIC);
+  return inode->removed;
+}
+
+bool inode_is_opened(const struct inode *inode){
+  ASSERT(inode != NULL);
+  ASSERT(inode->data.magic == INODE_MAGIC);
+  return inode->open_cnt > 0;
+}
+
