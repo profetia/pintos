@@ -6,6 +6,9 @@
 #include "filesys/free-map.h"
 #include "filesys/inode.h"
 #include "filesys/directory.h"
+#include "tanc.h"
+#include "threads/thread.h"
+#include "threads/malloc.h"
 
 /* Partition that contains the file system. */
 struct block *fs_device;
@@ -63,24 +66,85 @@ filesys_create (const char *name, off_t initial_size)
   return success;
 }
 
+/* this function is used to seek the inode of the file/dir with the given path 
+  * if the path is empty, then return the cwd.
+  * if the path is not empty, then we need to find the inode.
+  * we return the inode no matter we find it a dir or file.
+  */
+struct inode * path_seek(const char * path,int cwd_fd,int * parent_fd){
+  char * name = malloc(strlen(path)+1);
+  strlcpy(name, path, strlen(path)+1);
+  char * save_ptr;
+  char * token = strtok_r(name, "/", &save_ptr);
+  struct inode * inode = NULL;
+  LOG_DEBUG(("path_seek: %s",path));
+  if(token == NULL){
+    /* if the path is empty, return the cwd */
+    inode = inode_open(cwd_fd);
+    if(parent_fd != NULL)
+      *parent_fd = cwd_fd;
+  }else{
+    /* if the path is not empty, then we need to find the inode */
+    struct dir * dir = dir_open(inode_open(cwd_fd));
+    do{
+      bool success = dir_lookup(dir, token, &inode);
+      token = strtok_r(NULL, "/", &save_ptr);
+      /* if we failed. it implies there is no such entry then we return NULL */
+      if(!success){
+        free(name);
+        dir_close(dir);
+        return NULL;
+      }
+      /* if the token is NULL, then we have reached the end of the path */
+      /* if the token is not NULL, then we need to open the directory */
+      if(token){    
+        if(inode_is_dir(inode)){
+          /* if the inode is a directory, then we open it */
+          dir_close(dir);
+          dir = dir_open(inode);
+          if(parent_fd != NULL)
+            *parent_fd = inode_get_inumber(inode);
+        }
+        else{
+          /* if the inode is not a directory, then we return NULL */
+          free(name);
+          dir_close(dir);
+          return NULL;
+        }
+      }
+    }while(token != NULL);
+    /* if the token is NULL, then we have reached the end of the path */
+    dir_close(dir);     
+  }
+  free(name);
+  return inode;
+}
+
 /* Opens the file with the given NAME.
    Returns the new file if successful or a null pointer
    otherwise.
    Fails if no file named NAME exists,
    or if an internal memory allocation fails. */
 struct file *
-filesys_open (const char *name, int cwd_fd)
+filesys_open (const char *_name, int cwd_fd)
 {
-  struct dir *dir = dir_open(inode_open(cwd_fd));
-  if(dir == NULL)
-    return NULL;
-  struct inode *inode = NULL;
+  // struct dir *dir = dir_open(inode_open(cwd_fd));
+  // if(dir == NULL)
+  //   return NULL;
+  // struct inode *inode = NULL;
 
-  if (dir != NULL)
-    dir_lookup (dir, name, &inode);
-  dir_close (dir);
+  // if (dir != NULL)
+  //   dir_lookup (dir, _name, &inode);
+  // dir_close (dir);
+  struct inode *inode2 = path_seek(_name, cwd_fd, NULL);
+  // inode_close(inode2);
 
-  return file_open (inode);
+  return file_open (inode2);
+  
+  /* if _name is start with '/' then it is an absolute path */
+  // struct inode *inode = path_seek(_name, cwd_fd);
+  /* the node is already opened in path_seek */
+  // return file_open(inode);
 }
 
 /* Deletes the file named NAME.
@@ -90,12 +154,38 @@ filesys_open (const char *name, int cwd_fd)
 bool
 filesys_remove (const char *name, int cwd_fd) 
 {
-  struct dir *dir = dir_open(inode_open(cwd_fd));
-  if(dir == NULL) return false;
-  bool success = dir != NULL && dir_remove (dir, name);
-  dir_close (dir); 
-
+  // struct dir *dir = dir_open(inode_open(cwd_fd));
+  // if(dir == NULL) return false;
+  // bool success = dir != NULL && dir_remove (dir, name);
+  // dir_close (dir); 
+  int parent_fd;
+  struct inode *inode = path_seek(name, cwd_fd, &parent_fd);
+  if(inode == NULL)
+    return false;
+  if(inode_is_dir(inode)){
+    /* if the inode is a directory, then we need to check whether it is empty */
+    struct dir * dir = dir_open(inode);
+    if(!dir_is_empty(dir)){
+      /* if the directory is not empty, then we return false */
+      inode_close(inode);
+      dir_close(dir);
+      return false;
+    }
+  }
+  if(parent_fd == NOT_A_FD){
+    inode_close(inode);
+    return false;
+  }
+  struct dir * dir = dir_open(inode_open(parent_fd));
+  if(dir == NULL){
+    inode_close(inode);
+    return false;
+  }
+  bool success = dir_remove(dir, name);
+  inode_close(inode);
+  dir_close(dir);
   return success;
+  // return success;
 }
 
 /* Formats the file system. */
