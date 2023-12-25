@@ -6,6 +6,7 @@
 #include "filesys/inode.h"
 #include "stdbool.h"
 #include "threads/malloc.h"
+#include "tanc.h"
 
 /* A directory. */
 struct dir 
@@ -262,4 +263,67 @@ bool dir_is_empty(struct dir * dir){
     }
   }
   return true;
+}
+
+/* this function is used to seek the inode of the file/dir with the given path 
+  * If the path exists. return the inode of the file/dir. Set the parent_fd to the fd of the parent directory.
+  * If the path doest not exist
+    * if the path is empty, then return NULL and set the parent_fd to the NOT_A_FD
+    * if the parent directory exists, then return NULL and set the parent_fd to the fd of the parent directory.
+    * if the parent directory does not exist, then return NULL and set the parent_fd to NOT_A_FD
+*/
+struct inode * path_seek(const char * path,int cwd_fd,int* parent_fd){
+  /*if is empty path, return NULL and set the parent */
+  if(!strcmp(path,"")){
+    if(parent_fd != NULL)
+      *parent_fd = NOT_A_FD;
+    return NULL;
+  }
+  char * name = malloc(strlen(path)+1);
+  strlcpy(name, path, strlen(path)+1);
+  char * save_ptr = name;
+  char * token = strtok_r(name, "/", &save_ptr);
+  struct inode * inode = NULL;
+  int last_fd = cwd_fd;
+  /*if path starts with '/', chang the cwd_fd to root fd */
+  if(path[0] == '/'){
+    cwd_fd = ROOT_DIR_FD;
+    last_fd = ROOT_DIR_FD;
+  }
+  /*if the token is none, it must be '///...' */
+  if(token == NULL || !strcmp(token,"")){
+    free(name);
+    if(parent_fd != NULL)
+      *parent_fd = cwd_fd;
+    return NULL;
+  }
+  LOG_DEBUG(("path_seek: %s",path));
+  /* if the path is not empty, then we need to find the inode */
+  do{    
+    struct dir * dir = dir_open(inode_open(cwd_fd));
+    bool success = dir_lookup(dir, token, &inode);
+    token = strtok_r(NULL, "/", &save_ptr);
+    if(token == NULL || !strcmp(token,"")){
+      /* if the token is the last token, then we need to return the inode */
+      if(parent_fd != NULL)
+        *parent_fd = cwd_fd;
+      dir_close(dir);
+      free(name);
+      return inode;
+    }
+    if(!success){
+      /* if the token is not the last token, and the lookup fails, then we need to return NULL */
+      if(parent_fd != NULL)
+        *parent_fd = last_fd;
+      dir_close(dir);
+      free(name);
+      return NULL;
+    }
+    /* if the token is not the last token, and the lookup succeeds, then we need to continue */
+    last_fd = cwd_fd;
+    cwd_fd = (int) inode_get_inumber(inode);
+    dir_close(dir);
+  }while(token != NULL);
+  /*impossible case*/
+  return NULL;
 }
