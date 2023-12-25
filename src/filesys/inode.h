@@ -1,6 +1,7 @@
 #ifndef FILESYS_INODE_H
 #define FILESYS_INODE_H
-
+#define NOT_A_SECTOR -1
+#define NOT_A_FD -1
 #include <stdbool.h>
 #include "filesys/off_t.h"
 #include "devices/block.h"
