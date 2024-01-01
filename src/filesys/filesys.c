@@ -152,15 +152,24 @@ filesys_remove (const char *name, int cwd_fd)
     }
   }
   if(parent_fd == NOT_A_FD){
+    LOG_DEBUG(("parent_fd == NOT_A_FD"));
     inode_close(inode);
     return false;
   }
   struct dir * dir = dir_open(inode_open(parent_fd));
   if(dir == NULL){
+    LOG_DEBUG(("dir == NULL"));
     inode_close(inode);
     return false;
   }
-  bool success = dir_remove(dir, name);
+  //get the last token of name 
+  char * copy_name = malloc(strlen(name)+1);
+  char * last_token = NULL;
+  strlcpy(copy_name,name,strlen(name)+1);
+  bool success = get_last_token(copy_name, &last_token) 
+                       && dir_remove (dir, last_token);
+  free(copy_name);
+  LOG_DEBUG(("dir_remove success %d",success));
   inode_close(inode);
   dir_close(dir);
   return success;
