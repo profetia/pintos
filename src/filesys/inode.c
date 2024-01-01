@@ -608,6 +608,13 @@ bool inode_is_dir(const struct inode *inode){
   return inode->data.isdir;
 }
 
+bool inode_is_file(const struct inode * inode){
+  /* assert inode is not null and indeed an inode*/
+  ASSERT(inode != NULL);
+  ASSERT(inode->data.magic == INODE_MAGIC);
+  return !inode->data.isdir;
+}
+
 bool inode_is_removed(const struct inode *inode){
   ASSERT(inode != NULL);
   ASSERT(inode->data.magic == INODE_MAGIC);

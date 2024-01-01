@@ -29,5 +29,8 @@ bool dir_readdir (struct dir *, char name[NAME_MAX + 1]);
 bool dir_is_empty (struct dir *dir);
 /* path utils */
 struct inode * path_seek(const char * path,int cwd_fd,int * parent_fd);
+bool get_last_token(char * path,char ** last_token);
+
+void print_tree();
 
 #endif /* filesys/directory.h */

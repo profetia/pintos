@@ -6,6 +6,8 @@
 #include "devices/shutdown.h"
 #include "filesys/file.h"
 #include "filesys/filesys.h"
+#include "filesys/inode.h"
+#include "filesys/directory.h"
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
@@ -22,14 +24,19 @@ static void syscall_exit (int status);
 static tid_t syscall_exec (const char *cmd_line);
 static int syscall_wait (tid_t pid);
 static bool syscall_create (const char *file, off_t initial_size);
-static bool syscall_remove (const char *file);
-static int syscall_open (const char *file);
+static bool syscall_remove (const char *fileOrDir);
+static int syscall_open (const char *fileOrDir);
 static int syscall_filesize (int fd);
 static int syscall_read (int fd, void *buffer, unsigned size);
 static int syscall_write (int fd, const void *buffer, unsigned size);
 static void syscall_seek (int fd, unsigned position);
 static unsigned syscall_tell (int fd);
 static void syscall_close (int fd);
+static bool syscall_chdir (const char *dir);
+static bool syscall_mkdir (const char *dir);
+static bool syscall_readdir (int fd, char *name);
+static bool syscall_isdir (int fd);
+static int syscall_inumber (int fd);
 
 #ifdef VM
 static int syscall_mmap (int fd, void *addr);
@@ -142,6 +149,23 @@ syscall_handler (struct intr_frame *f)
         syscall_munmap(*(int *)(f->esp + 4));
         break;
 #endif
+      case SYS_CHDIR:
+        if (!is_valid_word(f->esp + 4, false))
+          syscall_exit(-1);        
+        f->eax = syscall_chdir(*(char **)(f->esp + 4));
+        break;
+      case SYS_MKDIR:
+        if (!is_valid_word(f->esp + 4, false))
+          syscall_exit(-1);        
+        f->eax = syscall_mkdir(*(char **)(f->esp + 4));
+        break;
+      case SYS_READDIR:
+        if (!is_valid_word(f->esp + 4, false) || 
+            !is_valid_word(f->esp + 8, false)) 
+          syscall_exit(-1);        
+        f->eax = syscall_readdir(*(int *)(f->esp + 4), *(char **)(f->esp + 8));
+        break;
+      
       default:
         syscall_exit(-1);
     }
@@ -180,18 +204,22 @@ syscall_create (const char *file, off_t initial_size)
   if (!is_valid_string(file, false)) 
     syscall_exit (-1);
   lock_acquire (&fs_lock);
-  bool success = filesys_create(file, initial_size);
+  bool success = filesys_create(file, initial_size,thread_current()->cwd_fd,false);
+  int parent_fd = NOT_A_FD;
+  struct inode * inode = path_seek(file,thread_current()->cwd_fd,&parent_fd);  
+  LOG_DEBUG(("syscall_create: %s with status %d, seek right away = %d, parent_fd = %d",file,success,inode,parent_fd));
   lock_release (&fs_lock);
+  // print_tree();
   return success;
 }
 
 static bool
-syscall_remove (const char *file)
+syscall_remove (const char *fileOrDir)
 {
-  if (!is_valid_string(file, false)) 
+  if (!is_valid_string(fileOrDir, false)) 
     syscall_exit (-1);
   lock_acquire (&fs_lock);
-  bool success = filesys_remove(file, thread_current()->cwd_fd);
+  bool success = filesys_remove(fileOrDir, thread_current()->cwd_fd);
   lock_release (&fs_lock);
   return success;
 }
@@ -202,13 +230,27 @@ syscall_open (const char *file)
   if (!is_valid_string(file, false)) 
     syscall_exit (-1);
   lock_acquire (&fs_lock);
+  // struct file *f = filesys_open(file,thread_current()->cwd_fd);
   LOG_DEBUG(("syscall_open: %s",file));
-  struct file *f = filesys_open(file,thread_current()->cwd_fd);
+  int parent_fd = NOT_A_FD;
+  struct inode * inode = path_seek(file,thread_current()->cwd_fd,&parent_fd);  
   lock_release (&fs_lock);
-  if (f == NULL) {
+  if(inode == NULL){
+    LOG_DEBUG(("syscall_open: failed %s is NULL and the parent is %u",file,parent_fd));
     return -1;
   }
-  return process_add_file(f);
+  if(inode_is_dir(inode)){
+    LOG_DEBUG(("syscall_open: %s is a dir",file));
+    struct file* file = file_open(inode);
+    return process_add_file(file);
+  }
+  if(inode_is_file(inode)){
+    LOG_DEBUG(("syscall_open: %s is a file",file));
+    struct file* file = file_open(inode);
+    return process_add_file(file);
+  }
+  /* other undefined cases? */
+  return -1;
 }
 
 static int
@@ -243,7 +285,7 @@ syscall_read (int fd, void *buffer, unsigned size)
     } 
 
   struct file *f = process_get_file(fd);
-  if (f == NULL) 
+  if (f == NULL || file_is_dir(f))
     syscall_exit(-1);
   
   lock_acquire (&fs_lock);
@@ -268,7 +310,7 @@ syscall_write (int fd, const void *buffer, unsigned size)
     }
 
   struct file *f = process_get_file(fd);
-  if (f == NULL) 
+  if (f == NULL || file_is_dir(f))
     syscall_exit(-1);
   
   lock_acquire (&fs_lock);
@@ -390,4 +432,54 @@ is_valid_string (const char *str, bool write)
     str++;
   }
   return false;
+}
+
+static bool syscall_chdir (const char *dir){
+  struct inode * inode = path_seek(dir,thread_current()->cwd_fd,NULL);
+  if(inode == NULL)
+    return false;
+  if(!inode_is_dir(inode)){
+    inode_close(inode);
+    return false;
+  }
+  int target_fd = inode_get_inumber(inode);
+  inode_close(inode);
+  thread_current()->cwd_fd = target_fd;
+  return true;
+}
+static bool syscall_mkdir (const char *dir){
+  lock_acquire (&fs_lock);
+  bool success = filesys_create(dir,0,thread_current()->cwd_fd,true);
+  LOG_DEBUG(("trying to create %s %d",dir,success));
+  lock_release (&fs_lock);
+  return success;
+}
+static bool syscall_readdir (int fd, char *name){
+  struct file * file = process_get_file(fd);
+  if(file == NULL)
+    return false;
+  struct inode * inode = file_get_inode(file);
+  if(inode == NULL)
+    return false;
+  if(!inode_is_dir(inode))
+    return false;
+  struct dir * dir = dir_open(inode);
+  if(dir == NULL)
+    return false;
+  bool success = dir_readdir(dir,name);
+  dir_close(dir);
+  return success;
+}
+static bool syscall_isdir (int fd){
+  struct file * file = process_get_file(fd);
+  if(file == NULL)
+    return false;
+  struct inode * inode = file_get_inode(file);
+  if(inode == NULL)
+    return false;
+  return inode_is_dir(inode);
+}
+
+static int syscall_inumber (int fd){
+  return fd;
 }

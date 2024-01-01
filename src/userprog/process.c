@@ -7,6 +7,7 @@
 #include <string.h>
 #include <tanc.h>
 #include <list.h>
+#include "filesys/inode.h"
 #include "userprog/gdt.h"
 #include "userprog/pagedir.h"
 #include "userprog/tss.h"
@@ -433,8 +434,7 @@ process_add_file (struct file *f)
   if (fe == NULL)
     return -1;
   fe->file = f;
-  fe->fd = cur->next_fd;
-  cur->next_fd++;
+  fe->fd = (int) inode_get_inumber(file_get_inode(f));
   list_push_back (&cur->file_list, &fe->elem);
   return fe->fd;
 }

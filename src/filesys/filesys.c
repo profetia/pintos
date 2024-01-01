@@ -51,74 +51,53 @@ filesys_done (void)
    Fails if a file named NAME already exists,
    or if internal memory allocation fails. */
 bool
-filesys_create (const char *name, off_t initial_size) 
-{
+filesys_create (const char *name, off_t initial_size, int cwd_fd,bool isdir)
+ {
   block_sector_t inode_sector = 0;
-  struct dir *dir = dir_open_root ();
-  bool success = (dir != NULL
-                  && free_map_allocate (1, &inode_sector)
-                  && inode_create (inode_sector, initial_size, false)
-                  && dir_add (dir, name, inode_sector));
-  if (!success && inode_sector != 0) 
+  int parent_fd = NOT_A_FD;
+  struct inode * inode = path_seek(name, cwd_fd, &parent_fd);
+  //if the file/dir already exists, return false
+  if(inode != NULL){
+    inode_close(inode);
+    return false;
+  }
+  //if the parent directory does not exist, return false
+  if(parent_fd == NOT_A_FD){
+    return false;
+  }
+  struct dir *dir = dir_open(inode_open(parent_fd));
+  bool success = false;
+  if(!isdir){
+    LOG_DEBUG(("create file %s",name));
+    char * copy_name = malloc(strlen(name)+1);
+    char * last_token = NULL;
+    strlcpy(copy_name,name,strlen(name)+1);    
+    success = (get_last_token(copy_name, &last_token) 
+                    && dir != NULL
+                    && free_map_allocate (1, &inode_sector)
+                    && inode_create (inode_sector, initial_size, false)
+                    && dir_add (dir, last_token, inode_sector));
+  }else{
+    success = (dir != NULL)
+                    && free_map_allocate (1, &inode_sector)
+                    && dir_create (inode_sector, 16, parent_fd);
+    if(success){
+      char * copy_name = malloc(strlen(name)+1);
+      char * last_token = NULL;
+      strlcpy(copy_name,name,strlen(name)+1);
+      bool local_success = get_last_token(copy_name, &last_token) 
+                           && dir_create(inode_sector, 16, parent_fd) 
+                           && dir_add (dir, last_token, inode_sector);
+      free(copy_name);
+      success = success && local_success;
+    }
+  }
+  if (!success && inode_sector != (unsigned) NOT_A_SECTOR) 
     free_map_release (inode_sector, 1);
   dir_close (dir);
-
   return success;
 }
 
-/* this function is used to seek the inode of the file/dir with the given path 
-  * if the path is empty, then return the cwd.
-  * if the path is not empty, then we need to find the inode.
-  * we return the inode no matter we find it a dir or file.
-  */
-struct inode * path_seek(const char * path,int cwd_fd,int * parent_fd){
-  char * name = malloc(strlen(path)+1);
-  strlcpy(name, path, strlen(path)+1);
-  char * save_ptr;
-  char * token = strtok_r(name, "/", &save_ptr);
-  struct inode * inode = NULL;
-  LOG_DEBUG(("path_seek: %s",path));
-  if(token == NULL){
-    /* if the path is empty, return the cwd */
-    inode = inode_open(cwd_fd);
-    if(parent_fd != NULL)
-      *parent_fd = cwd_fd;
-  }else{
-    /* if the path is not empty, then we need to find the inode */
-    struct dir * dir = dir_open(inode_open(cwd_fd));
-    do{
-      bool success = dir_lookup(dir, token, &inode);
-      token = strtok_r(NULL, "/", &save_ptr);
-      /* if we failed. it implies there is no such entry then we return NULL */
-      if(!success){
-        free(name);
-        dir_close(dir);
-        return NULL;
-      }
-      /* if the token is NULL, then we have reached the end of the path */
-      /* if the token is not NULL, then we need to open the directory */
-      if(token){    
-        if(inode_is_dir(inode)){
-          /* if the inode is a directory, then we open it */
-          dir_close(dir);
-          dir = dir_open(inode);
-          if(parent_fd != NULL)
-            *parent_fd = inode_get_inumber(inode);
-        }
-        else{
-          /* if the inode is not a directory, then we return NULL */
-          free(name);
-          dir_close(dir);
-          return NULL;
-        }
-      }
-    }while(token != NULL);
-    /* if the token is NULL, then we have reached the end of the path */
-    dir_close(dir);     
-  }
-  free(name);
-  return inode;
-}
 
 /* Opens the file with the given NAME.
    Returns the new file if successful or a null pointer
@@ -158,7 +137,7 @@ filesys_remove (const char *name, int cwd_fd)
   // if(dir == NULL) return false;
   // bool success = dir != NULL && dir_remove (dir, name);
   // dir_close (dir); 
-  int parent_fd;
+  int parent_fd = NOT_A_FD;
   struct inode *inode = path_seek(name, cwd_fd, &parent_fd);
   if(inode == NULL)
     return false;
@@ -187,7 +166,7 @@ filesys_remove (const char *name, int cwd_fd)
   return success;
   // return success;
 }
-
+
 /* Formats the file system. */
 static void
 do_format (void)
