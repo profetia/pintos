@@ -433,8 +433,11 @@ process_add_file (struct file *f)
   struct file_elem* fe = malloc (sizeof (struct file_elem));
   if (fe == NULL)
     return -1;
+  int fd = (int) inode_get_inumber(file_get_inode(f));
+  while(process_get_file(fd) != NULL)
+    fd += FD_GROW_MAGIC;
   fe->file = f;
-  fe->fd = (int) inode_get_inumber(file_get_inode(f));
+  fe->fd = fd;
   list_push_back (&cur->file_list, &fe->elem);
   return fe->fd;
 }

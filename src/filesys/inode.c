@@ -328,6 +328,7 @@ inode_create (block_sector_t sector, off_t length, bool isdir)
 struct inode *
 inode_open (block_sector_t sector)
 {
+  sector %= FD_GROW_MAGIC;
   struct list_elem *e;
   struct inode *inode;
 
