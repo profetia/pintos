@@ -12,6 +12,11 @@
 
 #include "threads/synch.h"
 
+#ifdef USERPROG
+#define NOT_A_FD -1     /* Not a file descriptor. */
+#include "filesys/filesys.h"
+#endif
+
 /* States in a thread's life cycle. */
 enum thread_status
   {
@@ -108,10 +113,11 @@ struct thread
     int priority;                       /* Priority. */
     struct list_elem allelem;           /* List element for all threads list. */
 
-#ifdef THREADS
+
     int64_t wakeup_tick;                /* Wakeup tick. */
     struct list_elem sleep_elem;        /* List element for sleep threads list. */
-
+    
+#ifdef THREADS 
     int init_priority;                  /* Initial priority. */
     struct list donor_list;             /* List of donors. */
     struct list_elem donor_elem;        /* List element for donors list. */
@@ -137,6 +143,9 @@ struct thread
     struct lock child_lock;             /* Child lock. */
     struct thread *parent;              /* Parent thread. */
     struct lock parent_lock;            /* Parent lock. */   
+
+    int cwd_fd;                         /* Current working directory discripter. */
+
 #endif
 
 #ifdef VM
@@ -161,7 +170,7 @@ void thread_tick (void);
 void thread_print_stats (void);
 
 typedef void thread_func (void *aux);
-tid_t thread_create (const char *name, int priority, thread_func *, void *);
+tid_t thread_create (const char *name, int priority, thread_func *, void *,int cwd_fd);
 
 void thread_block (void);
 void thread_unblock (struct thread *);

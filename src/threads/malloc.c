@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include "tanc.h"
 #include "threads/palloc.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
@@ -34,7 +35,6 @@
    with the page allocator and sticking the allocation size at
    the beginning of the allocated block's arena header. */
 
-/* Descriptor. */
 struct desc
   {
     size_t block_size;          /* Size of each element in bytes. */
@@ -83,7 +83,7 @@ malloc_init (void)
       lock_init (&d->lock);
     }
 }
-
+unsigned long debug_counter = 0;
 /* Obtains and returns a new block of at least SIZE bytes.
    Returns a null pointer if memory is not available. */
 void *
@@ -116,6 +116,7 @@ malloc (size_t size)
       a->magic = ARENA_MAGIC;
       a->desc = NULL;
       a->free_cnt = page_cnt;
+      
       return a + 1;
     }
 

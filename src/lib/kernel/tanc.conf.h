@@ -16,7 +16,7 @@ For more information, please refer to <https://github.com/yanglinshu/tanc/>.
 
 #include <stdio.h>
 
-#define LOG_LEVEL LOG_LEVEL_INFO
+#define LOG_LEVEL LOG_LEVEL_NONE
 
 #define LOG_WRITE_HANDLER printf
 

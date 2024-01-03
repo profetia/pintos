@@ -7,6 +7,7 @@
 #include <string.h>
 #include <tanc.h>
 #include <list.h>
+#include "filesys/inode.h"
 #include "userprog/gdt.h"
 #include "userprog/pagedir.h"
 #include "userprog/tss.h"
@@ -68,7 +69,7 @@ struct start_process_args
    before process_execute() returns.  Returns the new process's
    thread id, or TID_ERROR if the thread cannot be created. */
 tid_t
-process_execute (const char *file_name) 
+process_execute (const char *file_name, int cwd_fd) 
 {
   struct list* arg_list;
   tid_t tid;
@@ -113,7 +114,7 @@ process_execute (const char *file_name)
   lock_release (&cur->child_lock);  
 
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (exec_name, PRI_DEFAULT, start_process, init_args);
+  tid = thread_create (exec_name, PRI_DEFAULT, start_process, init_args, cwd_fd);
   if (tid == TID_ERROR)
     {
       cleanup_args(arg_list);
@@ -360,6 +361,8 @@ process_exit (void)
   pd = cur->pagedir;
   if (pd != NULL) 
     {
+      printf ("%s: exit(%d)\n", cur->name, cur->exit_status);    
+
 #ifdef VM
       struct list_elem* e;
       while (!list_empty (&cur->mmap_list))
@@ -381,9 +384,7 @@ process_exit (void)
          that's been freed (and cleared). */
       cur->pagedir = NULL;
       pagedir_activate (NULL);
-      pagedir_destroy (pd);
-      
-      printf ("%s: exit(%d)\n", cur->name, cur->exit_status);    
+      pagedir_destroy (pd);    
     }
 
   // Close all open files
@@ -432,9 +433,11 @@ process_add_file (struct file *f)
   struct file_elem* fe = malloc (sizeof (struct file_elem));
   if (fe == NULL)
     return -1;
+  int fd = (int) inode_get_inumber(file_get_inode(f));
+  while(process_get_file(fd) != NULL)
+    fd += FD_GROW_MAGIC;
   fe->file = f;
-  fe->fd = cur->next_fd;
-  cur->next_fd++;
+  fe->fd = fd;
   list_push_back (&cur->file_list, &fe->elem);
   return fe->fd;
 }
@@ -644,7 +647,7 @@ load (struct list* arg_list, void (**eip) (void), void **esp)
 
   /* Open executable file. */
   lock_acquire(&fs_lock);
-  file = filesys_open (exec_name);
+  file = filesys_open (exec_name, ROOT_DIR_FD);
   if (file == NULL) 
     {
       printf ("load: %s: open failed\n", exec_name);

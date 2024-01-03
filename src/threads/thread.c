@@ -25,11 +25,11 @@
    that are ready to run but not actually running. */
 static struct list ready_list;
 
-#ifdef THREADS      
+  
 /* List of sleeping threads. Processes are added to this list
    when they are sleeping and removed when they are woken up. */
 static struct list sleep_list;
-#endif
+
 
 /* List of all processes.  Processes are added to this list
    when they are first scheduled and removed when they exit. */
@@ -75,18 +75,19 @@ static void kernel_thread (thread_func *, void *aux);
 static void idle (void *aux UNUSED);
 static struct thread *running_thread (void);
 static struct thread *next_thread_to_run (void);
-static void init_thread (struct thread *, const char *name, int priority);
+static void init_thread (struct thread *, const char *name, int priority, int cwd_fd);
 static bool is_thread (struct thread *) UNUSED;
 static void *alloc_frame (struct thread *, size_t size);
 static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 
-#ifdef THREADS      
+   
 static bool thread_wakeup_tick_less (const struct list_elem *a,
                                      const struct list_elem *b,
                                      void *aux);
 
+#ifdef THREADS   
 static void 
 thread_update_recent_cpu_each (struct thread *t, 
                                   void *aux UNUSED);
@@ -112,14 +113,14 @@ thread_init (void)
 
   lock_init (&tid_lock);
   list_init (&ready_list);
-#ifdef THREADS
+
   list_init (&sleep_list);
-#endif
+
   list_init (&all_list);
 
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
-  init_thread (initial_thread, "main", PRI_DEFAULT);
+  init_thread (initial_thread, "main", PRI_DEFAULT, ROOT_DIR_FD);
   initial_thread->status = THREAD_RUNNING;
   initial_thread->tid = allocate_tid ();
 
@@ -141,7 +142,7 @@ thread_start (void)
   /* Create the idle thread. */
   struct semaphore idle_started;
   sema_init (&idle_started, 0);
-  thread_create ("idle", PRI_MIN, idle, &idle_started);
+  thread_create ("idle", PRI_MIN, idle, &idle_started, NOT_A_FD);
 
   /* Start preemptive thread scheduling. */
   intr_enable ();
@@ -206,7 +207,7 @@ thread_print_stats (void)
    Priority scheduling is the goal of Problem 1-3. */
 tid_t
 thread_create (const char *name, int priority,
-               thread_func *function, void *aux) 
+               thread_func *function, void *aux, int cwd_fd) 
 {
   struct thread *t;
   struct kernel_thread_frame *kf;
@@ -222,7 +223,7 @@ thread_create (const char *name, int priority,
     return TID_ERROR;
 
   /* Initialize thread. */
-  init_thread (t, name, priority);
+  init_thread (t, name, priority, cwd_fd);
   tid = t->tid = allocate_tid ();
 
   /* Stack frame for kernel_thread(). */
@@ -361,7 +362,7 @@ thread_yield (void)
   intr_set_level (old_level);
 }
 
-#ifdef THREADS
+
 /* Send the current thread to sleep for ticks, then block it. */
 void 
 thread_sleep(int64_t ticks)
@@ -404,7 +405,7 @@ thread_wakeup(int64_t ticks)
     }
   }
 }
-#endif
+
 
 /* Invoke function 'func' on all threads, passing along 'aux'.
    This function must be called with interrupts off. */
@@ -712,7 +713,7 @@ is_thread (struct thread *t)
 /* Does basic initialization of T as a blocked thread named
    NAME. */
 static void
-init_thread (struct thread *t, const char *name, int priority)
+init_thread (struct thread *t, const char *name, int priority, int cwd_fd)
 {
   enum intr_level old_level;
 
@@ -747,6 +748,8 @@ init_thread (struct thread *t, const char *name, int priority)
 
   t->parent = NULL;
   lock_init (&t->parent_lock);
+
+  t->cwd_fd = cwd_fd;
 #endif
 
   old_level = intr_disable ();
@@ -870,7 +873,7 @@ allocate_tid (void)
   return tid;
 }
 
-#ifdef THREADS
+
 static bool thread_wakeup_tick_less (const struct list_elem *a,
                                      const struct list_elem *b,
                                      void *aux UNUSED)
@@ -880,6 +883,7 @@ static bool thread_wakeup_tick_less (const struct list_elem *a,
   return thread_a->wakeup_tick < thread_b->wakeup_tick;
 }      
 
+#ifdef THREADS
 static void
 thread_update_recent_cpu_each (struct thread *t, void *aux UNUSED)
 {
