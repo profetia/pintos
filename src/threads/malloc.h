@@ -9,6 +9,5 @@ void *malloc (size_t) __attribute__ ((malloc));
 void *calloc (size_t, size_t) __attribute__ ((malloc));
 void *realloc (void *, size_t);
 void free (void *);
-void change_log_level(int x);
 
 #endif /* threads/malloc.h */
