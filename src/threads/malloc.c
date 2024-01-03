@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include "tanc.h"
 #include "threads/palloc.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
@@ -35,6 +36,10 @@
    the beginning of the allocated block's arena header. */
 
 /* Descriptor. */
+int level = 1;
+void change_log_level(int x){
+  level = x;
+}
 struct desc
   {
     size_t block_size;          /* Size of each element in bytes. */
@@ -83,7 +88,7 @@ malloc_init (void)
       lock_init (&d->lock);
     }
 }
-
+unsigned long debug_counter = 0;
 /* Obtains and returns a new block of at least SIZE bytes.
    Returns a null pointer if memory is not available. */
 void *
@@ -116,6 +121,11 @@ malloc (size_t size)
       a->magic = ARENA_MAGIC;
       a->desc = NULL;
       a->free_cnt = page_cnt;
+      if(level){
+        printf("size %lu address %p\n",size,a + 1);
+        debug_backtrace();
+      }
+      
       return a + 1;
     }
 
@@ -150,6 +160,10 @@ malloc (size_t size)
   a = block_to_arena (b);
   a->free_cnt--;
   lock_release (&d->lock);
+  if(level){
+    printf("size %lu address %p\n",size,b);
+    debug_backtrace();
+  }
   return b;
 }
 
@@ -218,6 +232,10 @@ realloc (void *old_block, size_t new_size)
 void
 free (void *p) 
 {
+  if(level){
+    printf("free %p\n",p);
+    debug_backtrace();
+  }
   if (p != NULL)
     {
       struct block *b = p;

@@ -68,7 +68,7 @@ filesys_create (const char *name, off_t initial_size, int cwd_fd,bool isdir)
   struct dir *dir = dir_open(inode_open(parent_fd));
   bool success = false;
   if(!isdir){
-    LOG_DEBUG(("create file %s",name));
+    // LOG_DEBUG(("create file %s",name));
     char * copy_name = malloc(strlen(name)+1);
     char * last_token = NULL;
     strlcpy(copy_name,name,strlen(name)+1);    
@@ -77,6 +77,7 @@ filesys_create (const char *name, off_t initial_size, int cwd_fd,bool isdir)
                     && free_map_allocate (1, &inode_sector)
                     && inode_create (inode_sector, initial_size, false)
                     && dir_add (dir, last_token, inode_sector));
+    free(copy_name);
   }else{
     success = (dir != NULL)
                     && free_map_allocate (1, &inode_sector)
@@ -137,6 +138,7 @@ filesys_remove (const char *name, int cwd_fd)
   // if(dir == NULL) return false;
   // bool success = dir != NULL && dir_remove (dir, name);
   // dir_close (dir); 
+  change_log_level(1);
   int parent_fd = NOT_A_FD;
   struct inode *inode = path_seek(name, cwd_fd, &parent_fd);
   if(inode == NULL)
@@ -146,7 +148,6 @@ filesys_remove (const char *name, int cwd_fd)
     struct dir * dir = dir_open(inode);
     if(!dir_is_empty(dir)){
       /* if the directory is not empty, then we return false */
-      inode_close(inode);
       dir_close(dir);
       return false;
     }
@@ -160,17 +161,18 @@ filesys_remove (const char *name, int cwd_fd)
   if(dir == NULL){
     LOG_DEBUG(("dir == NULL"));
     inode_close(inode);
+    dir_close(dir);    
     return false;
   }
+  inode_close(inode);
   //get the last token of name 
   char * copy_name = malloc(strlen(name)+1);
   char * last_token = NULL;
-  strlcpy(copy_name,name,strlen(name)+1);
+  strlcpy(copy_name, name, strlen(name)+1);
   bool success = get_last_token(copy_name, &last_token) 
                        && dir_remove (dir, last_token);
-  free(copy_name);
   LOG_DEBUG(("dir_remove success %d",success));
-  inode_close(inode);
+  free(copy_name);
   dir_close(dir);
   return success;
   // return success;

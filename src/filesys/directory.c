@@ -33,9 +33,14 @@ dir_create (block_sector_t sector, size_t entry_cnt, block_sector_t parent_secto
   if(success){
     /* add . */
     struct inode *inode = inode_open(sector);
-    struct dir_entry * e = calloc(1,sizeof(struct dir_entry));
-    if(inode == NULL || e == NULL)
+    if(inode == NULL){
       return false;
+    }
+    struct dir_entry * e = calloc(1,sizeof(struct dir_entry));
+    if(e == NULL){
+      inode_close(inode);
+      return false;
+    }
     e->inode_sector = sector;
     e->in_use = true;
     strlcpy(e->name,".",sizeof(e->name));
@@ -44,6 +49,7 @@ dir_create (block_sector_t sector, size_t entry_cnt, block_sector_t parent_secto
     e->inode_sector = parent_sector;
     strlcpy(e->name,"..",sizeof(e->name));
     inode_write_at(inode,e,sizeof(struct dir_entry),sizeof(struct dir_entry));
+    
   }
   return success;
 }
@@ -114,7 +120,7 @@ lookup (const struct dir *dir, const char *name,
   struct dir_entry e;
   size_t ofs;
   
-   ASSERT (dir != NULL);
+  ASSERT (dir != NULL);
   ASSERT (name != NULL);
 
   for (ofs = 0; inode_read_at (dir->inode, &e, sizeof e, ofs) == sizeof e;
@@ -143,8 +149,11 @@ dir_lookup (const struct dir *dir, const char *name,
   ASSERT (dir != NULL);
   ASSERT (name != NULL);
 
-  if (lookup (dir, name, &e, NULL))
+  if (lookup (dir, name, &e, NULL)){
+    // LOG_DEBUG(("e.inode_sector = %u",e.inode_sector));
     *inode = inode_open (e.inode_sector);
+    // LOG_DEBUG(("inode mem loc=%u, sector=%u",*inode, e.inode_sector));
+  }
   else
     *inode = NULL;
 
@@ -223,6 +232,18 @@ dir_remove (struct dir *dir, const char *name)
     LOG_DEBUG(("dir_remove: inode_open failed"));
     goto done;
   }
+  /* If the inode represents a dir*/
+  if(inode_is_dir(inode)){
+    struct dir * dir_local = dir_open(inode);
+    if(!dir_is_empty(dir_local)){
+      dir_close(dir_local);
+      return false;
+    }
+    free(dir_local);
+  }
+  /* Remove inode. */
+  inode_remove (inode);
+  inode_close (inode);
 
   /* Erase directory entry. */
   e.in_use = false;
@@ -230,13 +251,9 @@ dir_remove (struct dir *dir, const char *name)
     LOG_DEBUG(("dir_remove: inode_write_at failed"));
     goto done;
   }
-
-  /* Remove inode. */
-  inode_remove (inode);
   success = true;
 
  done:
-  inode_close (inode);
   return success;
 }
 
@@ -257,6 +274,7 @@ dir_readdir (struct dir *dir, char name[NAME_MAX + 1])
           if(strcmp(e.name,".") == 0 || strcmp(e.name,"..") == 0)
             continue;
           strlcpy (name, e.name, NAME_MAX + 1);
+          // LOG_DEBUG(("dir_readdir: %s, inumber=%u",name, inode_get_inumber(dir->inode)));
           return true;
         } 
     }
@@ -298,7 +316,7 @@ struct inode * path_seek(const char * path,int cwd_fd,int* parent_fd){
   char * token = strtok_r(name, "/", &save_ptr);
   struct inode * inode = NULL;
 
-  LOG_DEBUG(("path_seek: %s first token is %s",path,token));
+  // LOG_DEBUG(("path_seek: %s first token is %s",path,token));
   /*if path starts with '/', chang the cwd_fd to root fd */
   int save_cwd_fd = cwd_fd;
   if(path[0] == '/'){
@@ -318,7 +336,7 @@ struct inode * path_seek(const char * path,int cwd_fd,int* parent_fd){
     token = strtok_r(NULL, "/", &save_ptr);
     ++token_len;
   }
-  LOG_DEBUG(("%d tokens found",token_len));
+  // LOG_DEBUG(("%d tokens found",token_len));
   strlcpy(name, path, strlen(path)+1);
   save_ptr = name;
   token = strtok_r(name, "/", &save_ptr);
@@ -326,12 +344,12 @@ struct inode * path_seek(const char * path,int cwd_fd,int* parent_fd){
 
   int token_id = 0;
   while(token){
-    LOG_DEBUG(("token %d is %s",token_id,token));
+    // LOG_DEBUG(("token %d is %s",token_id,token));
     inode = NULL;
     struct inode * pa = inode_open(cwd_fd);
     if(inode_is_removed(pa)){
       free(name);
-      LOG_DEBUG(("parent not exist (is removed)"));
+      // LOG_DEBUG(("parent not exist (is removed)"));
       return false;
     }
     struct dir * dir = dir_open(pa);
@@ -340,10 +358,14 @@ struct inode * path_seek(const char * path,int cwd_fd,int* parent_fd){
     if(token_id == token_len - 1){
       if(parent_fd != NULL)
         *parent_fd = cwd_fd;
+      // LOG_DEBUG(("parent exist %d and target might exist %d (mem loc=%u).And the success_dirlookup = %d",
+      //            parent_fd != NULL ? *parent_fd : -1,inode ? inode_get_inumber(inode) : -1, inode, success
+      //           ));      
       dir_close(dir);
-      inode_close(pa);
       free(name);
-      LOG_DEBUG(("parent exist %u and target might exist %u",parent_fd != NULL ? *parent_fd : -1,inode));
+      // LOG_DEBUG(("parent exist %d and target might exist %d (mem loc=%u).And the success_dirlookup = %d",
+      //            parent_fd != NULL ? *parent_fd : -1,inode ? inode_get_inumber(inode) : -1, inode, success
+      //           ));
       return inode;
     }    
     if(!success){ 
@@ -352,35 +374,35 @@ struct inode * path_seek(const char * path,int cwd_fd,int* parent_fd){
         if(parent_fd != NULL)
           *parent_fd = cwd_fd;
         dir_close(dir);
-        inode_close(pa);
+        // inode_close(pa);
         free(name);
-        LOG_DEBUG(("parent exist but target not"));
+        // LOG_DEBUG(("parent exist but target not"));
         return NULL;
       }//otherwise the path is not valid.
       dir_close(dir);
-      inode_close(pa);
+      // inode_close(pa);
       free(name);
       if(parent_fd != NULL)
         *parent_fd = cwd_fd;
-      LOG_DEBUG(("parent not exist"));
+      // LOG_DEBUG(("parent not exist"));
       return NULL;
     }//otherwise the token is found in the dir
     //if the next token is the last token, then return the inode
     if(token_id == token_len - 1){
       dir_close(dir);
-      inode_close(pa);
+      // inode_close(pa);
       free(name);
       if(parent_fd != NULL)
         *parent_fd = cwd_fd;
-      LOG_DEBUG(("parent exist and target exist, success=%d, inode=%u",success,inode));;
+      // LOG_DEBUG(("parent exist and target exist, success=%d, inode=%u",success,inode));;
       return inode;
     }
     //otherwise open it and continue
     dir_close(dir);
-    inode_close(pa);
+    // inode_close(pa);
     if(inode_is_removed(inode)){
       free(name);
-      LOG_DEBUG(("parent not exist (is removed)"));
+      // LOG_DEBUG(("parent not exist (is removed)"));
       return NULL;
     }
     if(inode_is_dir(inode)){
@@ -388,7 +410,7 @@ struct inode * path_seek(const char * path,int cwd_fd,int* parent_fd){
     }else{
       inode_close(inode);
       free(name);
-      LOG_DEBUG(("parent not exist (is a file)"));
+      // LOG_DEBUG(("parent not exist (is a file)"));
       return NULL;
     }
     inode_close(inode);
@@ -396,6 +418,7 @@ struct inode * path_seek(const char * path,int cwd_fd,int* parent_fd){
     token = strtok_r(NULL, "/", &save_ptr);
   }
   /*impossible case*/
+  free(name);
   return NULL;
 }
 
@@ -436,21 +459,24 @@ static void transverse(struct inode* current, int depth){
        ofs += sizeof e){
     if(e.in_use && strcmp(e.name,".") != 0 && strcmp(e.name,"..") != 0){
       struct inode * inode = inode_open(e.inode_sector);
+      if(inode == NULL){
+        LOG_DEBUG(("inode_open failed, sector %d with name= %s",e.inode_sector,e.name));
+      }
       if(inode_is_dir(inode)){
         for(int i = 0; i < depth; ++i)
           printf("  ");
-        printf("|-%s\n",e.name);
+        printf("|-%s sec=%u\n",e.name,e.inode_sector);
         transverse(inode,depth+1);
       }else{
         for(int i = 0; i < depth; ++i)
           printf("  ");
-        printf("|-%s\n",e.name);
+        printf("|-%s sec=%u\n",e.name,e.inode_sector);
       }
       inode_close(inode);
     }else if(e.in_use){
       for(int i = 0; i < depth; ++i)
         printf("  ");
-      printf("|-%s\n",e.name);
+      printf("|-%s sec=%u\n",e.name,e.inode_sector);
     }
   }
   dir_close(dir);

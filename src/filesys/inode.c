@@ -3,11 +3,13 @@
 #include <debug.h>
 #include <round.h>
 #include <string.h>
+#include "directory.h"
 #include "filesys/filesys.h"
 #include "filesys/free-map.h"
 #include "stdbool.h"
 #include "threads/malloc.h"
 #include "lib/kernel/tanc.h"
+
 
 /* Identifies an inode. */
 #define INODE_MAGIC 0x494e4f44
@@ -116,7 +118,7 @@ bool direct_block_init_if_need(block_sector_t *sector){
   ASSERT(sector != NULL);
   if(*sector == NOT_A_SECTOR){
     if(!free_map_allocate(1, sector)){
-      /* PANIC("free_map_allocate_if_need: free_map_allocate failed"); */
+      PANIC("free_map_allocate_if_need: free_map_allocate failed");
       *sector = NOT_A_SECTOR;
       return false;
     }
@@ -175,6 +177,7 @@ bool double_indirect_block_init_if_need(block_sector_t *sector){
       - This function is not thread safe.
 */
 block_sector_t inode_seek (struct inode_disk * inode_disk, block_sector_t logical_sector){
+  ASSERT(inode_disk != NULL);
   LOG_TRACE(("inode_seek: logical_sector = %d", logical_sector));
   /* seek in direct blocks */
   if(logical_sector < DIRECT_BLOCK_SIZE){
@@ -292,6 +295,7 @@ bool
 inode_create (block_sector_t sector, off_t length, bool isdir)
 {
   struct inode_disk *disk_inode = NULL;
+  LOG_TRACE(("inode_create: sector = %d, length = %d, isdir = %d", sector, length, isdir));
 
   ASSERT (length >= 0);
 
@@ -403,8 +407,11 @@ inode_close (struct inode *inode)
         double_indirect_block_disk = malloc(sizeof *double_indirect_block_disk);
         indirect_block_disk = malloc(sizeof *indirect_block_disk);
 
-        if(double_indirect_block_disk == NULL || indirect_block_disk == NULL)
+        if(double_indirect_block_disk == NULL || indirect_block_disk == NULL){
+          free(double_indirect_block_disk);
+          free(indirect_block_disk);
           PANIC("memory allocation failed while freeing filesystem blocks");
+        }
 
         /* free all indirect blocks */
         if (inode->data.indirect_block != NOT_A_SECTOR){
@@ -472,13 +479,22 @@ inode_remove (struct inode *inode)
 off_t
 inode_read_at (struct inode *inode, void *buffer_, off_t size, off_t offset) 
 {
+  ASSERT(inode != NULL);
   uint8_t *buffer = buffer_;
   off_t bytes_read = 0;
   uint8_t *bounce = malloc (BLOCK_SECTOR_SIZE);
-  if (size == 0)
+  if(bounce == NULL){
     return 0;
-  if (offset >= inode->data.length)
+  }
+  if (size == 0){
+    free(bounce);
     return 0;
+  }
+  if (offset >= inode->data.length){
+    free(bounce);
+    return 0;
+  }
+  LOG_TRACE(("inode_read_at: inode->sector = %d, size = %d, offset = %d", inode->sector, size, offset));
   if (offset + size > inode->data.length)
     size = inode->data.length - offset;
   /* read the first sector */
@@ -533,8 +549,10 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
   /* write the first sector */
   block_sector_t first = offset / BLOCK_SECTOR_SIZE;
   block_sector_t sector_idx = inode_seek(&inode->data, first);
-  if(sector_idx == NOT_A_SECTOR)
+  if(sector_idx == NOT_A_SECTOR){
+    free (bounce);
     return 0;
+  }
   block_read(fs_device, sector_idx, bounce);
   int sector_ofs = offset % BLOCK_SECTOR_SIZE;
   int sector_left = BLOCK_SECTOR_SIZE - sector_ofs;
@@ -571,7 +589,8 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
   /* update inode length */
   if (offset + bytes_written > inode->data.length)
       inode->data.length = offset + bytes_written;
-
+  /* write disk_inode back*/
+  block_write(fs_device, inode->sector, &inode->data);
   return bytes_written;
 }
 
@@ -599,6 +618,7 @@ inode_allow_write (struct inode *inode)
 off_t
 inode_length (const struct inode *inode)
 {
+  ASSERT(inode->data.magic == INODE_MAGIC);
   return inode->data.length;
 }
 

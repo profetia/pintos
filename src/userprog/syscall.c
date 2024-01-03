@@ -5,6 +5,7 @@
 #include "filesys/file.h"
 #include "filesys/filesys.h"
 #include "filesys/inode.h"
+#include "stdbool.h"
 #include "stddef.h"
 #include "threads/interrupt.h"
 #include "threads/thread.h"
@@ -177,7 +178,7 @@ syscall_handler (struct intr_frame *f)
         syscall_exit (-1);
       f->eax = syscall_isdir (*(int *)(f->esp + 4));
       break;
-      
+
 
     default:
       syscall_exit (-1);
@@ -222,9 +223,9 @@ syscall_create (const char *file, off_t initial_size)
   int parent_fd = NOT_A_FD;
   struct inode *inode
       = path_seek (file, thread_current ()->cwd_fd, &parent_fd);
-  LOG_DEBUG (("syscall_create: %s with status %d, seek right away = %d, "
-              "parent_fd = %d",
-              file, success, inode, parent_fd));
+  // LOG_DEBUG (("syscall_create: %s with status %d, seek right away = %u, "
+  //             "parent_fd = %d",
+  //             file, success, inode, parent_fd));
   lock_release (&fs_lock);
   // print_tree();
   return success;
@@ -236,6 +237,7 @@ syscall_remove (const char *fileOrDir)
   if (!is_valid_string (fileOrDir, false))
     syscall_exit (-1);
   lock_acquire (&fs_lock);
+  LOG_DEBUG(("syscall_remove: %s",fileOrDir));
   bool success = filesys_remove (fileOrDir, thread_current ()->cwd_fd);
   lock_release (&fs_lock);
   return success;
@@ -249,20 +251,20 @@ syscall_open (const char *file)
 
   lock_acquire (&fs_lock);
   // struct file *f = filesys_open(file,thread_current()->cwd_fd);
-  LOG_DEBUG (("syscall_open: %s", file));
+  // LOG_DEBUG (("syscall_open: %s on cwd %d", file,thread_current()->cwd_fd));
   int parent_fd = NOT_A_FD;
   struct inode *inode
       = path_seek (file, thread_current ()->cwd_fd, &parent_fd);
   lock_release (&fs_lock);
   if (inode == NULL)
     {
-      LOG_DEBUG (("syscall_open: failed %s is NULL and the parent is %u", file,
-                  parent_fd));
+      // LOG_DEBUG (("syscall_open: failed %s is NULL and the parent is %u", file,
+      //             parent_fd));
       return -1;
     }
 
-  LOG_DEBUG (("syscall_open: find %s with inumber %u and parent %u", file,
-              inode_get_inumber (inode), parent_fd));
+  // LOG_DEBUG (("syscall_open: find %s with inumber %u and parent %u", file,
+  //             inode_get_inumber (inode), parent_fd));
   // if (process_get_file ((int)inode_get_inumber (inode)) != NULL)
   //   {
   //     LOG_DEBUG (("syscall_open: %s is already opened", file));
@@ -271,13 +273,13 @@ syscall_open (const char *file)
 
   if (inode_is_dir (inode))
     {
-      LOG_DEBUG (("syscall_open: %s is a dir", file));
+      // LOG_DEBUG (("syscall_open: %s is a dir", file));
       struct file *file = file_open (inode);
       return process_add_file (file);
     }
   if (inode_is_file (inode))
     {
-      LOG_DEBUG (("syscall_open: %s is a file", file));
+      // LOG_DEBUG (("syscall_open: %s is a file", file));
       struct file *file = file_open (inode);
       return process_add_file (file);
     }
@@ -382,6 +384,8 @@ syscall_close (int fd)
   struct file *f = process_get_file (fd);
   if (f == NULL)
     syscall_exit (-1);
+
+  // LOG_DEBUG(("syscall_close: %d",fd));
   process_close_file (fd);
 }
 
@@ -478,7 +482,9 @@ is_valid_string (const char *str, bool write)
 static bool
 syscall_chdir (const char *dir)
 {
+  lock_acquire(&fs_lock);
   struct inode *inode = path_seek (dir, thread_current ()->cwd_fd, NULL);
+  lock_release(&fs_lock);
   if (inode == NULL)
     return false;
   if (!inode_is_dir (inode))
@@ -491,42 +497,42 @@ syscall_chdir (const char *dir)
   thread_current ()->cwd_fd = target_fd;
   return true;
 }
+
 static bool
 syscall_mkdir (const char *dir)
 {
   lock_acquire (&fs_lock);
   bool success = filesys_create (dir, 0, thread_current ()->cwd_fd, true);
-  LOG_DEBUG (("trying to create %s %d", dir, success));
+  // LOG_DEBUG (("trying to create %s %d", dir, success));
   lock_release (&fs_lock);
   return success;
 }
+
 static bool
 syscall_readdir (int fd, char *name)
 {
   struct file *file = process_get_file (fd);
-  if (file == NULL){
-    LOG_DEBUG(("syscall_readdir: file is null"));
+  if(file == NULL){
+    // LOG_DEBUG(("syscall_readdir: file is null"));
     return false;
   }
-  struct inode *inode = file_get_inode (file);
-  if (inode == NULL){
-    LOG_DEBUG(("syscall_readdir: inode is null"));
+  if(!file_is_dir(file)){
+    // LOG_DEBUG(("syscall_readdir: file is not dir"));
     return false;
   }
-  if (!inode_is_dir (inode)){
-    LOG_DEBUG(("syscall_readdir: inode is not dir"));
-    return false;
-  }
-  struct dir *dir = dir_open (inode);
+  // LOG_DEBUG(("syscall_readdir: file %d %d", fd, inode_get_inumber(file_get_inode(file))));
+  struct dir *dir = file_get_dir(file);
   if (dir == NULL){
-    LOG_DEBUG(("syscall_readdir: dir is null"));
+    // LOG_DEBUG(("syscall_readdir: dir is null"));
     return false;
   }
+  // LOG_DEBUG(("syscall_readdir: dir with inumber %d", inode_get_inumber(dir_get_inode(dir))));
   lock_acquire(&fs_lock);
-  bool success = dir_readdir (dir, name);//TODO where is name allocated?
-  LOG_DEBUG(("dir_readdir %d, name %s",success,name));
+  bool success = dir_readdir (dir, name); //TODO where is name allocated?
+  // LOG_DEBUG(("dir_readdir success=%d, name %s", success, name));
+  // print_tree();
+  // LOG_DEBUG(("syscall_readdir: after all this dir with inumber %d", inode_get_inumber(dir_get_inode(dir))));  
   lock_release(&fs_lock);
-  dir_close (dir);
   return success;
 }
 static bool
@@ -545,5 +551,5 @@ static int
 syscall_inumber (int fd)
 {
   LOG_DEBUG(("fd = %d",fd));
-  return fd;
+  return fd % FD_GROW_MAGIC;
 }

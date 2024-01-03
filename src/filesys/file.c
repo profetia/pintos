@@ -60,11 +60,12 @@ file_close (struct file *file)
 {
   if (file != NULL)
     {
-      file_allow_write (file);
-      inode_close (file->inode);
+      file_allow_write (file);      
       if(file->dir != NULL){
         dir_close(file->dir);
         file->dir = NULL;
+      } else {
+        inode_close (file->inode);
       }
       free (file); 
     }
@@ -186,4 +187,9 @@ file_tell (struct file *file)
 {
   ASSERT (file != NULL);
   return file->pos;
+}
+
+/* Return the permenant dir stored in the FILE struct. */
+struct dir * file_get_dir(struct file *file){
+  return file->dir;
 }
