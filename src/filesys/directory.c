@@ -310,10 +310,8 @@ struct inode * path_seek(const char * path,int cwd_fd,int* parent_fd){
   struct inode * inode = NULL;
 
   /*if path starts with '/', chang the cwd_fd to root fd */
-  int save_cwd_fd = cwd_fd;
   if(path[0] == '/'){
     cwd_fd = ROOT_DIR_FD;
-    save_cwd_fd = ROOT_DIR_FD;
   }
   /*if the token is none, it must be '///...' */
   if(token == NULL || !strcmp(token,"")){

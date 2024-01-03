@@ -93,14 +93,11 @@ timer_sleep (int64_t ticks)
 
   ASSERT (intr_get_level () == INTR_ON);
 
-#ifdef THREADS
+
   // sleep until wakeup by timer_interrupt
   thread_sleep(start + ticks);
-#else
-  // busy waiting
-  while (timer_elapsed (start) < ticks) 
-    thread_yield ();
-#endif
+
+
 }
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be
@@ -184,10 +181,11 @@ timer_interrupt (struct intr_frame *args UNUSED)
   ticks++;
   thread_tick ();
 
-#ifdef THREADS
+
   // wakeup sleeping threads
   thread_wakeup(ticks);
 
+#ifdef THREADS
   // update recent_cpu
   if (thread_mlfqs) 
     {    

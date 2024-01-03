@@ -25,11 +25,11 @@
    that are ready to run but not actually running. */
 static struct list ready_list;
 
-#ifdef THREADS      
+  
 /* List of sleeping threads. Processes are added to this list
    when they are sleeping and removed when they are woken up. */
 static struct list sleep_list;
-#endif
+
 
 /* List of all processes.  Processes are added to this list
    when they are first scheduled and removed when they exit. */
@@ -82,11 +82,12 @@ static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 
-#ifdef THREADS      
+   
 static bool thread_wakeup_tick_less (const struct list_elem *a,
                                      const struct list_elem *b,
                                      void *aux);
 
+#ifdef THREADS   
 static void 
 thread_update_recent_cpu_each (struct thread *t, 
                                   void *aux UNUSED);
@@ -112,9 +113,9 @@ thread_init (void)
 
   lock_init (&tid_lock);
   list_init (&ready_list);
-#ifdef THREADS
+
   list_init (&sleep_list);
-#endif
+
   list_init (&all_list);
 
   /* Set up a thread structure for the running thread. */
@@ -361,7 +362,7 @@ thread_yield (void)
   intr_set_level (old_level);
 }
 
-#ifdef THREADS
+
 /* Send the current thread to sleep for ticks, then block it. */
 void 
 thread_sleep(int64_t ticks)
@@ -404,7 +405,7 @@ thread_wakeup(int64_t ticks)
     }
   }
 }
-#endif
+
 
 /* Invoke function 'func' on all threads, passing along 'aux'.
    This function must be called with interrupts off. */
@@ -872,7 +873,7 @@ allocate_tid (void)
   return tid;
 }
 
-#ifdef THREADS
+
 static bool thread_wakeup_tick_less (const struct list_elem *a,
                                      const struct list_elem *b,
                                      void *aux UNUSED)
@@ -882,6 +883,7 @@ static bool thread_wakeup_tick_less (const struct list_elem *a,
   return thread_a->wakeup_tick < thread_b->wakeup_tick;
 }      
 
+#ifdef THREADS
 static void
 thread_update_recent_cpu_each (struct thread *t, void *aux UNUSED)
 {

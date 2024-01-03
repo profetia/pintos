@@ -361,6 +361,8 @@ process_exit (void)
   pd = cur->pagedir;
   if (pd != NULL) 
     {
+      printf ("%s: exit(%d)\n", cur->name, cur->exit_status);    
+
 #ifdef VM
       struct list_elem* e;
       while (!list_empty (&cur->mmap_list))
@@ -382,9 +384,7 @@ process_exit (void)
          that's been freed (and cleared). */
       cur->pagedir = NULL;
       pagedir_activate (NULL);
-      pagedir_destroy (pd);
-      
-      printf ("%s: exit(%d)\n", cur->name, cur->exit_status);    
+      pagedir_destroy (pd);    
     }
 
   // Close all open files

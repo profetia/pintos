@@ -31,6 +31,4 @@ bool dir_is_empty (struct dir *dir);
 struct inode * path_seek(const char * path,int cwd_fd,int * parent_fd);
 bool get_last_token(char * path,char ** last_token);
 
-void print_tree();
-
 #endif /* filesys/directory.h */

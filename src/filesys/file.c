@@ -32,7 +32,6 @@ file_open (struct inode *inode)
         file->dir = dir_open(inode);
         if(file->dir == NULL){
           free(file);
-          file->dir = NULL;
           return NULL;
         }
       }
