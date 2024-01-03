@@ -6,7 +6,6 @@
 #include "filesys/free-map.h"
 #include "filesys/inode.h"
 #include "filesys/directory.h"
-#include "tanc.h"
 #include "threads/thread.h"
 #include "threads/malloc.h"
 
@@ -68,7 +67,6 @@ filesys_create (const char *name, off_t initial_size, int cwd_fd,bool isdir)
   struct dir *dir = dir_open(inode_open(parent_fd));
   bool success = false;
   if(!isdir){
-    // LOG_DEBUG(("create file %s",name));
     char * copy_name = malloc(strlen(name)+1);
     char * last_token = NULL;
     strlcpy(copy_name,name,strlen(name)+1);    
@@ -138,7 +136,6 @@ filesys_remove (const char *name, int cwd_fd)
   // if(dir == NULL) return false;
   // bool success = dir != NULL && dir_remove (dir, name);
   // dir_close (dir); 
-  change_log_level(1);
   int parent_fd = NOT_A_FD;
   struct inode *inode = path_seek(name, cwd_fd, &parent_fd);
   if(inode == NULL)
@@ -154,13 +151,11 @@ filesys_remove (const char *name, int cwd_fd)
     free(dir_local);
   }
   if(parent_fd == NOT_A_FD){
-    LOG_DEBUG(("parent_fd == NOT_A_FD"));
     inode_close(inode);
     return false;
   }
   struct dir * dir = dir_open(inode_open(parent_fd));
   if(dir == NULL){
-    LOG_DEBUG(("dir == NULL"));
     inode_close(inode);
     dir_close(dir);    
     return false;
@@ -172,7 +167,6 @@ filesys_remove (const char *name, int cwd_fd)
   strlcpy(copy_name, name, strlen(name)+1);
   bool success = get_last_token(copy_name, &last_token) 
                        && dir_remove (dir, last_token);
-  LOG_DEBUG(("dir_remove success %d",success));
   free(copy_name);
   dir_close(dir);
   return success;

@@ -7,7 +7,6 @@
 #include "filesys/inode.h"
 #include "stdbool.h"
 #include "threads/malloc.h"
-#include "tanc.h"
 
 /* A directory. */
 struct dir 
@@ -149,10 +148,8 @@ dir_lookup (const struct dir *dir, const char *name,
   ASSERT (dir != NULL);
   ASSERT (name != NULL);
 
-  if (lookup (dir, name, &e, NULL)){
-    // LOG_DEBUG(("e.inode_sector = %u",e.inode_sector));
+  if (lookup (dir, name, &e, NULL)){    
     *inode = inode_open (e.inode_sector);
-    // LOG_DEBUG(("inode mem loc=%u, sector=%u",*inode, e.inode_sector));
   }
   else
     *inode = NULL;
@@ -222,14 +219,12 @@ dir_remove (struct dir *dir, const char *name)
 
   /* Find directory entry. */
   if (!lookup (dir, name, &e, &ofs)){
-    LOG_DEBUG(("dir_remove: lookup failed"));
     goto done;
   }
 
   /* Open inode. */
   inode = inode_open (e.inode_sector);
   if (inode == NULL){
-    LOG_DEBUG(("dir_remove: inode_open failed"));
     goto done;
   }
   /* If the inode represents a dir*/
@@ -248,7 +243,6 @@ dir_remove (struct dir *dir, const char *name)
   /* Erase directory entry. */
   e.in_use = false;
   if (inode_write_at (dir->inode, &e, sizeof e, ofs) != sizeof e) {
-    LOG_DEBUG(("dir_remove: inode_write_at failed"));
     goto done;
   }
   success = true;
@@ -274,7 +268,6 @@ dir_readdir (struct dir *dir, char name[NAME_MAX + 1])
           if(strcmp(e.name,".") == 0 || strcmp(e.name,"..") == 0)
             continue;
           strlcpy (name, e.name, NAME_MAX + 1);
-          // LOG_DEBUG(("dir_readdir: %s, inumber=%u",name, inode_get_inumber(dir->inode)));
           return true;
         } 
     }
@@ -316,7 +309,6 @@ struct inode * path_seek(const char * path,int cwd_fd,int* parent_fd){
   char * token = strtok_r(name, "/", &save_ptr);
   struct inode * inode = NULL;
 
-  // LOG_DEBUG(("path_seek: %s first token is %s",path,token));
   /*if path starts with '/', chang the cwd_fd to root fd */
   int save_cwd_fd = cwd_fd;
   if(path[0] == '/'){
@@ -336,7 +328,7 @@ struct inode * path_seek(const char * path,int cwd_fd,int* parent_fd){
     token = strtok_r(NULL, "/", &save_ptr);
     ++token_len;
   }
-  // LOG_DEBUG(("%d tokens found",token_len));
+
   strlcpy(name, path, strlen(path)+1);
   save_ptr = name;
   token = strtok_r(name, "/", &save_ptr);
@@ -344,12 +336,10 @@ struct inode * path_seek(const char * path,int cwd_fd,int* parent_fd){
 
   int token_id = 0;
   while(token){
-    // LOG_DEBUG(("token %d is %s",token_id,token));
     inode = NULL;
     struct inode * pa = inode_open(cwd_fd);
     if(inode_is_removed(pa)){
       free(name);
-      // LOG_DEBUG(("parent not exist (is removed)"));
       return false;
     }
     struct dir * dir = dir_open(pa);
@@ -357,15 +347,9 @@ struct inode * path_seek(const char * path,int cwd_fd,int* parent_fd){
     bool success = dir_lookup(dir,token,&inode);
     if(token_id == token_len - 1){
       if(parent_fd != NULL)
-        *parent_fd = cwd_fd;
-      // LOG_DEBUG(("parent exist %d and target might exist %d (mem loc=%u).And the success_dirlookup = %d",
-      //            parent_fd != NULL ? *parent_fd : -1,inode ? inode_get_inumber(inode) : -1, inode, success
-      //           ));      
+        *parent_fd = cwd_fd;     
       dir_close(dir);
       free(name);
-      // LOG_DEBUG(("parent exist %d and target might exist %d (mem loc=%u).And the success_dirlookup = %d",
-      //            parent_fd != NULL ? *parent_fd : -1,inode ? inode_get_inumber(inode) : -1, inode, success
-      //           ));
       return inode;
     }    
     if(!success){ 
@@ -376,7 +360,6 @@ struct inode * path_seek(const char * path,int cwd_fd,int* parent_fd){
         dir_close(dir);
         // inode_close(pa);
         free(name);
-        // LOG_DEBUG(("parent exist but target not"));
         return NULL;
       }//otherwise the path is not valid.
       dir_close(dir);
@@ -384,7 +367,6 @@ struct inode * path_seek(const char * path,int cwd_fd,int* parent_fd){
       free(name);
       if(parent_fd != NULL)
         *parent_fd = cwd_fd;
-      // LOG_DEBUG(("parent not exist"));
       return NULL;
     }//otherwise the token is found in the dir
     //if the next token is the last token, then return the inode
@@ -394,7 +376,6 @@ struct inode * path_seek(const char * path,int cwd_fd,int* parent_fd){
       free(name);
       if(parent_fd != NULL)
         *parent_fd = cwd_fd;
-      // LOG_DEBUG(("parent exist and target exist, success=%d, inode=%u",success,inode));;
       return inode;
     }
     //otherwise open it and continue
@@ -402,7 +383,6 @@ struct inode * path_seek(const char * path,int cwd_fd,int* parent_fd){
     // inode_close(pa);
     if(inode_is_removed(inode)){
       free(name);
-      // LOG_DEBUG(("parent not exist (is removed)"));
       return NULL;
     }
     if(inode_is_dir(inode)){
@@ -410,7 +390,6 @@ struct inode * path_seek(const char * path,int cwd_fd,int* parent_fd){
     }else{
       inode_close(inode);
       free(name);
-      // LOG_DEBUG(("parent not exist (is a file)"));
       return NULL;
     }
     inode_close(inode);
@@ -439,53 +418,4 @@ bool get_last_token(char * path,char ** last_token){
   *last_token = (last - name) + path;
   free(name);
   return true;
-}
-
-int dfs(const char* name, struct inode * inode){
-  LOG_DEBUG(("%s %u",name,inode_get_inumber(inode)));
-  
-  return 1;
-}
-
-static void transverse(struct inode* current, int depth){
-  if(current == NULL)
-    return;
-  struct dir * dir = dir_open(current);
-  if(dir == NULL)
-    return;
-  struct dir_entry e;
-  off_t ofs;
-  for (ofs = 0; inode_read_at (current, &e, sizeof e, ofs) == sizeof e;
-       ofs += sizeof e){
-    if(e.in_use && strcmp(e.name,".") != 0 && strcmp(e.name,"..") != 0){
-      struct inode * inode = inode_open(e.inode_sector);
-      if(inode == NULL){
-        LOG_DEBUG(("inode_open failed, sector %d with name= %s",e.inode_sector,e.name));
-      }
-      if(inode_is_dir(inode)){
-        for(int i = 0; i < depth; ++i)
-          printf("  ");
-        printf("|-%s sec=%u\n",e.name,e.inode_sector);
-        transverse(inode,depth+1);
-      }else{
-        for(int i = 0; i < depth; ++i)
-          printf("  ");
-        printf("|-%s sec=%u\n",e.name,e.inode_sector);
-      }
-      inode_close(inode);
-    }else if(e.in_use){
-      for(int i = 0; i < depth; ++i)
-        printf("  ");
-      printf("|-%s sec=%u\n",e.name,e.inode_sector);
-    }
-  }
-  dir_close(dir);
-}
-
-//print a tree from the root
-void print_tree() {
-  struct dir * dir = dir_open_root();
-  printf("/\n");
-  transverse(dir_get_inode(dir),0);
-  dir_close(dir);
 }
