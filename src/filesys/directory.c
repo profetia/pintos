@@ -49,7 +49,7 @@ dir_create (block_sector_t sector, size_t entry_cnt, block_sector_t parent_secto
     e->inode_sector = parent_sector;
     strlcpy(e->name,"..",sizeof(e->name));
     inode_write_at(inode,e,sizeof(struct dir_entry),sizeof(struct dir_entry));
-    
+    free(e);
   }
   return success;
 }

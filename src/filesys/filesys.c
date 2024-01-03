@@ -145,12 +145,13 @@ filesys_remove (const char *name, int cwd_fd)
     return false;
   if(inode_is_dir(inode)){
     /* if the inode is a directory, then we need to check whether it is empty */
-    struct dir * dir = dir_open(inode);
-    if(!dir_is_empty(dir)){
+    struct dir * dir_local = dir_open(inode);
+    if(!dir_is_empty(dir_local)){
       /* if the directory is not empty, then we return false */
-      dir_close(dir);
+      dir_close(dir_local);
       return false;
     }
+    free(dir_local);
   }
   if(parent_fd == NOT_A_FD){
     LOG_DEBUG(("parent_fd == NOT_A_FD"));

@@ -121,10 +121,10 @@ malloc (size_t size)
       a->magic = ARENA_MAGIC;
       a->desc = NULL;
       a->free_cnt = page_cnt;
-      if(level){
-        printf("size %lu address %p\n",size,a + 1);
-        debug_backtrace();
-      }
+      // if(level){
+      //   printf("size %lu address %p\n",size,a + 1);
+      //   debug_backtrace();
+      // }
       
       return a + 1;
     }
@@ -160,10 +160,10 @@ malloc (size_t size)
   a = block_to_arena (b);
   a->free_cnt--;
   lock_release (&d->lock);
-  if(level){
-    printf("size %lu address %p\n",size,b);
-    debug_backtrace();
-  }
+  // if(level){
+  //   printf("size %lu address %p\n",size,b);
+  //   debug_backtrace();
+  // }
   return b;
 }
 
@@ -232,10 +232,10 @@ realloc (void *old_block, size_t new_size)
 void
 free (void *p) 
 {
-  if(level){
-    printf("free %p\n",p);
-    debug_backtrace();
-  }
+  // if(level){
+  //   printf("free %p\n",p);
+  //   debug_backtrace();
+  // }
   if (p != NULL)
     {
       struct block *b = p;
